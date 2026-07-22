@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Виртуальное окружение
+.venv/
+venv/
+env/
+ENV/
+
+# База данных (генерируется парсером, не в git)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Логи
+*.log
+logs/
+
+# Кеш картинок (генерируется image_cache.py, ~38k файлов)
+static/images/
+
+# Дампы/черновики
+код.txt
+*.bak
+*.tmp
+
+# История VSCode Local History
+.history/
+
+# Конфиг редактора
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ZCode
+.zcode/
+.zscripts/
+
+# Список обнаруженных URL (кэш discovery, ~460 КБ — можно перегенерировать)
+discovered_urls.txt

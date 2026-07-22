@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Стиль {{ style_name }}{% endblock %}
+
+{% block content %}
+<a class="btn" href="{{ url_for('styles') }}">← Все стили</a>
+
+<div class="style-hero" style="margin-top: 16px;">
+  <div class="bjcp">
+    {% if guide and guide.bjcp_id %}BJCP {{ guide.bjcp_id }}{% endif %}
+    · {{ count }} позиций в базе
+  </div>
+  <h1>{{ style_name }}</h1>
+  {% if guide and guide.impression %}<p style="color: var(--muted); margin: 6px 0 0; max-width: 800px; line-height: 1.6;">{{ guide.impression }}</p>{% endif %}
+</div>
+
+<div class="style-stats">
+  <div class="kv"><div class="kv-label">Позиций</div><div class="kv-value">{{ count }}</div></div>
+  {% if stats.avg_abv %}<div class="kv"><div class="kv-label">Среднее ABV</div><div class="kv-value">{{ '%.1f'|format(stats.avg_abv) }}%</div></div>{% endif %}
+  {% if stats.min_abv is not none %}<div class="kv"><div class="kv-label">ABV диапазон</div><div class="kv-value">{{ stats.min_abv }}–{{ stats.max_abv }}%</div></div>{% endif %}
+  {% if stats.avg_price_num %}<div class="kv"><div class="kv-label">Средняя цена</div><div class="kv-value">{{ stats.avg_price_num|round(0)|int }} ₽</div></div>{% endif %}
+  {% if stats.producers %}<div class="kv"><div class="kv-label">Пивоварен</div><div class="kv-value">{{ stats.producers }}</div></div>{% endif %}
+  {% if stats.countries %}<div class="kv"><div class="kv-label">Стран</div><div class="kv-value">{{ stats.countries }}</div></div>{% endif %}
+  {% if stats.with_photos %}<div class="kv"><div class="kv-label">С фото</div><div class="kv-value">{{ stats.with_photos }}</div></div>{% endif %}
+</div>
+
+{% if guide %}
+  <div class="style-sections">
+    {% if guide.aroma %}<div class="style-section"><h4>Аромат</h4><p>{{ guide.aroma }}</p></div>{% endif %}
+    {% if guide.appearance %}<div class="style-section"><h4>Внешний вид</h4><p>{{ guide.appearance }}</p></div>{% endif %}
+    {% if guide.flavor %}<div class="style-section"><h4>Вкус</h4><p>{{ guide.flavor }}</p></div>{% endif %}
+    {% if guide.mouthfeel %}<div class="style-section"><h4>Текстура</h4><p>{{ guide.mouthfeel }}</p></div>{% endif %}
+    {% if guide.history %}<div class="style-section"><h4>История</h4><p>{{ guide.history }}</p></div>{% endif %}
+    <div class="style-section">
+      <h4>Спецификация BJCP</h4>
+      <p>
+        {% if guide.abv_min is not none %}ABV: {{ guide.abv_min }}–{{ guide.abv_max }}%<br>{% endif %}
+        {% if guide.ibu_min is not none %}IBU: {{ guide.ibu_min }}–{{ guide.ibu_max }}<br>{% endif %}
+        {% if guide.og_min %}OG: {{ guide.og_min }}–{{ guide.og_max }}<br>{% endif %}
+        {% if guide.fg_min %}FG: {{ guide.fg_min }}–{{ guide.fg_max }}<br>{% endif %}
+        {% if guide.glass %}Бокал: {{ guide.glass }}<br>{% endif %}
+        {% if guide.serving_temp %}Температура: {{ guide.serving_temp }}<br>{% endif %}
+      </p>
+    </div>
+    {% if guide.food_pairing %}<div class="style-section"><h4>Гастропары</h4><p>{{ guide.food_pairing }}</p></div>{% endif %}
+  </div>
+
+  {% if guide.abv_min is not none %}
+    <div class="panel" style="margin-top: 20px;">
+      <h3>📍 Позиции в базе по отношению к референсу стиля</h3>
+      <div class="abv-bar" title="Синий — референс ABV по BJCP, зелёная метка — среднее в базе">
+        <div class="range" style="left: {{ abv_bar.range_left }}%; width: {{ abv_bar.range_width }}%;"></div>
+        <div class="marker" style="left: {{ abv_bar.avg_left }}%;"></div>
+        <div class="scale"><span>0%</span><span>20%</span></div>
+      </div>
+      <p style="margin-top: 10px; color: var(--muted); font-size: 12px;">
+        Синий диапазон — референс BJCP ({{ guide.abv_min }}–{{ guide.abv_max }}%).
+        Зелёная метка — средний ABV позиций в базе ({{ '%.1f'|format(stats.avg_abv) }}%).
+      </p>
+    </div>
+  {% endif %}
+{% else %}
+  <div class="panel">
+    <h3>ℹ️ Подробное описание стиля</h3>
+    <p>Для этого стиля пока нет расширенной справки BJCP. Показана статистика по позициям в базе.</p>
+  </div>
+{% endif %}
+
+<h2 class="section-title">🏷 Топ пивоварен в стиле</h2>
+<div class="grid-tight">
+  {% for b in top_breweries %}
+    <a class="stat-card" href="{{ url_for('brewery_detail', slug=b.slug) }}">
+      <span class="label">{{ b.producer }}</span>
+      <span class="num">{{ b.count }}</span>
+    </a>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">🍺 Топ позиций</h2>
+<div class="grid">
+  {% for b in top_beers %}
+    <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+      <div class="card-img">
+        {% if b.local_image %}
+          <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+        {% else %}
+          <span class="no-img">🍺</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="card-name">{{ b.name }}</div>
+        <div class="card-producer">{{ b.producer or '' }}</div>
+        <div class="card-meta">
+          {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
+          {% if b.price %}<span class="pill price">{{ b.price }}</span>{% endif %}
+        </div>
+      </div>
+    </a>
+  {% endfor %}
+</div>
+
+<div style="margin-top: 20px;">
+  <a class="btn btn-primary" href="{{ url_for('catalog', style=style_name) }}">Все {{ count }} позиций в каталоге →</a>
+</div>
+{% endblock %}

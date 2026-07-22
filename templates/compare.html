@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Сравнение{% endblock %}
+
+{% block content %}
+<h1 class="page-title">⚖ Сравнение</h1>
+
+<form class="filters-bar" method="get">
+  <input type="hidden" name="id1" value="{{ beer1.id if beer1 else '' }}">
+  <label style="color: var(--muted); font-size: 12px;">Позиция 2:</label>
+  <select name="id2" onchange="this.form.submit()">
+    <option value="">— выберите —</option>
+    {% for b in all_beers %}
+      <option value="{{ b.id }}" {{ 'selected' if beer2 and beer2.id == b.id }}>{{ b.name }} ({{ b.producer or '' }})</option>
+    {% endfor %}
+  </select>
+</form>
+
+{% if beer1 and beer2 %}
+<div class="compare-grid">
+  {% for b in [beer1, beer2] %}
+  <div class="compare-col">
+    <div class="top-img">
+      {% if b.local_image %}
+        <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}">
+      {% else %}
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:80px;color:#334155;">🍺</div>
+      {% endif %}
+    </div>
+    <h3 style="margin:0 0 4px;"><a href="{{ url_for('beer_detail', beer_id=b.id) }}">{{ b.name }}</a></h3>
+    <div class="text-muted" style="font-size: 13px;">{{ b.producer or '' }} · {{ b.brewery_country or '' }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<table class="compare-table">
+  <tbody>
+    <tr><th>Стиль</th><td>{{ beer1.style or '—' }}</td><td>{{ beer2.style or '—' }}</td></tr>
+    <tr><th>Подстиль</th><td>{{ beer1.substyle or '—' }}</td><td>{{ beer2.substyle or '—' }}</td></tr>
+    <tr><th>ABV</th><td>{{ (beer1.abv ~ '%') if beer1.abv else '—' }}</td><td>{{ (beer2.abv ~ '%') if beer2.abv else '—' }}</td></tr>
+    <tr><th>IBU</th><td>{{ beer1.ibu or '—' }}</td><td>{{ beer2.ibu or '—' }}</td></tr>
+    <tr><th>Объём</th><td>{{ (beer1.volume ~ ' мл') if beer1.volume else '—' }}</td><td>{{ (beer2.volume ~ ' мл') if beer2.volume else '—' }}</td></tr>
+    <tr><th>Цвет</th><td>{{ beer1.color or '—' }}</td><td>{{ beer2.color or '—' }}</td></tr>
+    <tr><th>Цена</th><td>{{ beer1.price or '—' }}</td><td>{{ beer2.price or '—' }}</td></tr>
+    <tr><th>Крепость/литр</th><td>{{ abv_per_rub(beer1) }}</td><td>{{ abv_per_rub(beer2) }}</td></tr>
+    <tr><th>Цена/100 мл</th><td>{{ price_per_100ml(beer1) }}</td><td>{{ price_per_100ml(beer2) }}</td></tr>
+    <tr><th>Наличие</th><td>{{ beer1.availability or '—' }}</td><td>{{ beer2.availability or '—' }}</td></tr>
+    <tr><th>Страна</th><td>{{ beer1.brewery_country or '—' }}</td><td>{{ beer2.brewery_country or '—' }}</td></tr>
+    <tr><th>Город</th><td>{{ beer1.brewery_city or '—' }}</td><td>{{ beer2.brewery_city or '—' }}</td></tr>
+    <tr><th>Аромат</th><td>{{ beer1.aroma or '—' }}</td><td>{{ beer2.aroma or '—' }}</td></tr>
+    <tr><th>Вкус</th><td>{{ beer1.taste or '—' }}</td><td>{{ beer2.taste or '—' }}</td></tr>
+    <tr><th>Описание</th><td>{{ (beer1.description[:120] ~ '...') if beer1.description and beer1.description|length > 120 else (beer1.description or '—') }}</td><td>{{ (beer2.description[:120] ~ '...') if beer2.description and beer2.description|length > 120 else (beer2.description or '—') }}</td></tr>
+  </tbody>
+</table>
+{% else %}
+  <div class="empty-state">
+    <div class="big">⚖</div>
+    <p>Выберите вторую позицию для сравнения с первой.</p>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}{{ beer.name }} — {{ beer.producer or '' }}{% endblock %}
+
+{% block content %}
+<a class="btn" href="javascript:history.back()">← Назад</a>
+<div class="beer-detail" style="margin-top: 16px;">
+
+  <div class="gallery">
+    <div class="main-photo">
+      {% if main_image %}
+        <img src="{{ main_image }}" alt="{{ beer.name }}">
+      {% else %}
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:80px;color:#334155;">🍺</div>
+      {% endif %}
+    </div>
+    {% if gallery %}
+      <div class="thumbs">
+        {% for g in gallery %}
+          <div class="thumb {{ 'active' if loop.first }}">
+            <img src="{{ g }}" data-full="{{ g }}" alt="{{ beer.name }} фото {{ loop.index }}" loading="lazy">
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="detail-info">
+    <div class="detail-header">
+      <h1>{{ beer.name }}</h1>
+      {% if beer.producer %}
+        <div class="producer">
+          <a href="{{ url_for('brewery_detail', slug=brewery_slug) if brewery_slug else '#' }}">{{ beer.producer }}</a>
+        </div>
+      {% endif %}
+      <div class="geo">
+        {{ [beer.brewery_city, beer.brewery_country]|select|join(', ') }}
+        {% if beer.category %} · {{ beer.category }}{% endif %}
+      </div>
+    </div>
+
+    <div class="kv-grid">
+      {% if beer.style %}<div class="kv"><div class="kv-label">Стиль</div><div class="kv-value"><a href="{{ url_for('style_detail', slug=style_slug) if style_slug else '#' }}">{{ beer.style }}</a></div></div>{% endif %}
+      {% if beer.substyle %}<div class="kv"><div class="kv-label">Подстиль</div><div class="kv-value">{{ beer.substyle }}</div></div>{% endif %}
+      {% if beer.abv %}<div class="kv"><div class="kv-label">Крепость</div><div class="kv-value">{{ beer.abv }}%</div></div>{% endif %}
+      {% if beer.ibu %}<div class="kv"><div class="kv-label">IBU</div><div class="kv-value">{{ beer.ibu }}</div></div>{% endif %}
+      {% if beer.volume %}<div class="kv"><div class="kv-label">Объём</div><div class="kv-value">{{ beer.volume }} мл</div></div>{% endif %}
+      {% if beer.color %}<div class="kv"><div class="kv-label">Цвет</div><div class="kv-value">{{ beer.color }}</div></div>{% endif %}
+      {% if beer.price %}<div class="kv"><div class="kv-label">Цена</div><div class="kv-value" style="color: var(--good)">{{ beer.price }}</div></div>{% endif %}
+      {% if beer.rating %}<div class="kv"><div class="kv-label">Рейтинг</div><div class="kv-value">★ {{ '%.2f'|format(beer.rating) }}</div></div>{% endif %}
+      {% if beer.availability %}<div class="kv"><div class="kv-label">Наличие</div><div class="kv-value">{{ beer.availability }}</div></div>{% endif %}
+      {% if beer.barcode %}<div class="kv"><div class="kv-label">Штрихкод</div><div class="kv-value" style="font-size:13px">{{ beer.barcode }}</div></div>{% endif %}
+      {% if beer.serving_temp %}<div class="kv"><div class="kv-label">Темп. подачи</div><div class="kv-value">{{ beer.serving_temp }}</div></div>{% endif %}
+      {% if beer.serving_glass %}<div class="kv"><div class="kv-label">Бокал</div><div class="kv-value">{{ beer.serving_glass }}</div></div>{% endif %}
+    </div>
+
+    {% if beer.description %}
+      <div class="panel">
+        <h3>📖 Описание</h3>
+        <p>{{ beer.description }}</p>
+      </div>
+    {% endif %}
+
+    {% if beer.aroma or beer.taste or beer.mouthfeel or beer.appearance %}
+      <div class="panel">
+        <h3>👅 Органолептика</h3>
+        {% if beer.aroma %}<p><strong>Аромат:</strong> {{ beer.aroma }}</p>{% endif %}
+        {% if beer.taste %}<p><strong>Вкус:</strong> {{ beer.taste }}</p>{% endif %}
+        {% if beer.mouthfeel %}<p><strong>Текстура:</strong> {{ beer.mouthfeel }}</p>{% endif %}
+        {% if beer.appearance %}<p><strong>Внешний вид:</strong> {{ beer.appearance }}</p>{% endif %}
+      </div>
+    {% endif %}
+
+    {% if beer.ingredients or beer.hops or beer.malt or beer.yeast or beer.additives %}
+      <div class="panel">
+        <h3>🌾 Состав</h3>
+        {% if beer.ingredients %}<p><strong>Ингредиенты:</strong> {{ beer.ingredients }}</p>{% endif %}
+        {% if beer.hops %}<p><strong>Хмель:</strong> {{ beer.hops }}</p>{% endif %}
+        {% if beer.malt %}<p><strong>Солод:</strong> {{ beer.malt }}</p>{% endif %}
+        {% if beer.yeast %}<p><strong>Дрожжи:</strong> {{ beer.yeast }}</p>{% endif %}
+        {% if beer.additives %}<p><strong>Добавки:</strong> {{ beer.additives }}</p>{% endif %}
+      </div>
+    {% endif %}
+
+    {% if beer.food_pairing %}
+      <div class="panel">
+        <h3>🍽 Гастропары</h3>
+        <p>{{ beer.food_pairing }}</p>
+      </div>
+    {% endif %}
+
+    {% if style_info %}
+      <div class="panel" style="border-left: 3px solid var(--accent);">
+        <h3>🎨 О стиле «{{ beer.style }}»</h3>
+        {% if style_info.impression %}<p>{{ style_info.impression }}</p>{% endif %}
+        <p style="color: var(--muted); margin-top: 10px; font-size: 13px;">
+          {% if style_info.glass %}Бокал: {{ style_info.glass }}{% endif %}
+          {% if style_info.serving_temp %} · {{ style_info.serving_temp }}{% endif %}
+          {% if style_info.abv_min %} · ABV: {{ style_info.abv_min }}–{{ style_info.abv_max }}%{% endif %}
+          {% if style_info.ibu_min is not none %} · IBU: {{ style_info.ibu_min }}–{{ style_info.ibu_max }}{% endif %}
+        </p>
+        <div style="margin-top: 10px;">
+          <a class="btn" href="{{ url_for('style_detail', slug=style_slug) }}">Подробнее о стиле →</a>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="actions-row">
+      {% if beer.original_url %}
+        <a class="btn btn-primary" href="{{ beer.original_url }}" target="_blank" rel="noopener">Открыть оригинал ↗</a>
+      {% endif %}
+      <a class="btn" href="{{ url_for('compare', id1=beer.id) }}">⚖ Сравнить с...</a>
+      <a class="btn" href="{{ url_for('random_beer') }}">🎲 Случайное</a>
+    </div>
+  </div>
+</div>
+
+{% if similar %}
+  <h2 class="section-title">🔗 Похожие</h2>
+  <div class="grid">
+    {% for b in similar %}
+      <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+        <div class="card-img">
+          {% if b.local_image %}
+            <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+          {% else %}
+            <span class="no-img">🍺</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <div class="card-name">{{ b.name }}</div>
+          <div class="card-producer">{{ b.producer or '' }}</div>
+          <div class="card-meta">
+            {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
+            {% if b.price %}<span class="pill price">{{ b.price }}</span>{% endif %}
+          </div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ country }} — пиво{% endblock %}
+
+{% block content %}
+<h1 class="page-title">🌍 {{ country }}</h1>
+<div class="page-subtitle">{{ total }} позиций · {{ breweries_count }} пивоварен</div>
+
+<div class="style-stats">
+  <div class="kv"><div class="kv-label">Позиций</div><div class="kv-value">{{ total }}</div></div>
+  <div class="kv"><div class="kv-label">Пивоварен</div><div class="kv-value">{{ breweries_count }}</div></div>
+  {% if stats.avg_abv %}<div class="kv"><div class="kv-label">Среднее ABV</div><div class="kv-value">{{ '%.1f'|format(stats.avg_abv) }}%</div></div>{% endif %}
+  {% if stats.avg_price_num %}<div class="kv"><div class="kv-label">Средняя цена</div><div class="kv-value">{{ stats.avg_price_num|round(0)|int }} ₽</div></div>{% endif %}
+  {% if stats.styles %}<div class="kv"><div class="kv-label">Стилей</div><div class="kv-value">{{ stats.styles }}</div></div>{% endif %}
+</div>
+
+<h2 class="section-title">🏭 Топ пивоварен</h2>
+<div class="grid-tight">
+  {% for b in top_breweries %}
+    <a class="stat-card" href="{{ url_for('brewery_detail', slug=b.slug) }}">
+      <span class="label">{{ b.producer }}</span>
+      <span class="num">{{ b.count }}</span>
+    </a>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">🍺 Топ позиций</h2>
+<div class="grid">
+  {% for b in top_beers %}
+    <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+      <div class="card-img">
+        {% if b.local_image %}
+          <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+        {% else %}
+          <span class="no-img">🍺</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="card-name">{{ b.name }}</div>
+        <div class="card-producer">{{ b.producer or '' }}</div>
+        <div class="card-meta">
+          {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
+          {% if b.price %}<span class="pill price">{{ b.price }}</span>{% endif %}
+        </div>
+      </div>
+    </a>
+  {% endfor %}
+</div>
+{% endblock %}

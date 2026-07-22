@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Каталог пива{% endblock %}
+
+{% block content %}
+<h1 class="page-title">📚 Каталог</h1>
+<div class="page-subtitle">Найдено: <strong>{{ total }}</strong> позиций</div>
+
+<form class="filters-bar" method="get">
+  <input class="grow" type="text" name="name" value="{{ filters.name }}" placeholder="Название...">
+  <input type="text" name="producer" value="{{ filters.producer }}" placeholder="Пивовар...">
+  <select name="style">
+    <option value="">Все стили</option>
+    {% for s in style_options %}
+      <option value="{{ s }}" {{ 'selected' if filters.style == s }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <select name="country">
+    <option value="">Все страны</option>
+    {% for c in country_options %}
+      <option value="{{ c }}" {{ 'selected' if filters.country == c }}>{{ c }}</option>
+    {% endfor %}
+  </select>
+  <input type="number" name="abv_min" value="{{ filters.abv_min }}" placeholder="ABV от" step="0.1" style="width:90px">
+  <input type="number" name="abv_max" value="{{ filters.abv_max }}" placeholder="ABV до" step="0.1" style="width:90px">
+  <button class="btn btn-primary" type="submit">Применить</button>
+  <a class="btn" href="{{ url_for('catalog') }}">Сбросить</a>
+</form>
+
+{% if beers %}
+  <div class="grid">
+    {% for b in beers %}
+      <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+        <div class="card-img">
+          {% if b.local_image %}
+            <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+          {% else %}
+            <span class="no-img">🍺</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <div class="card-name">{{ b.name }}</div>
+          <div class="card-producer">{{ b.producer or '' }}</div>
+          {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
+          <div class="card-meta">
+            {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
+            {% if b.volume %}<span class="pill">{{ b.volume }} мл</span>{% endif %}
+            {% if b.price %}<span class="pill price">{{ b.price }}</span>{% endif %}
+          </div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+
+  {% if has_more %}
+    <div style="text-align:center; margin-top:24px;">
+      <a class="btn btn-primary" href="{{ url_for('catalog', **next_page_params) }}">Показать ещё {{ page_size }} →</a>
+    </div>
+  {% endif %}
+{% else %}
+  <div class="empty-state">
+    <div class="big">🍺</div>
+    <p>Ничего не найдено. Измените фильтры.</p>
+  </div>
+{% endif %}
+{% endblock %}

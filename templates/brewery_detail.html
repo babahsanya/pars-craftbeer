@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ brewery_name }} — пивоварня{% endblock %}
+
+{% block content %}
+<a class="btn" href="{{ url_for('breweries') }}">← Все пивовары</a>
+
+<div class="style-hero" style="margin-top: 16px;">
+  <h1>🏭 {{ brewery_name }}</h1>
+  {% if country %}<p style="color: var(--accent); margin: 4px 0;">{{ country }}{{ ' · ' ~ city if city }}</p>{% endif %}
+  <p style="color: var(--muted); margin: 6px 0 0;">{{ total }} позиций в базе</p>
+</div>
+
+<div class="style-stats">
+  <div class="kv"><div class="kv-label">Позиций</div><div class="kv-value">{{ total }}</div></div>
+  {% if stats.avg_abv %}<div class="kv"><div class="kv-label">Среднее ABV</div><div class="kv-value">{{ '%.1f'|format(stats.avg_abv) }}%</div></div>{% endif %}
+  {% if stats.avg_price_num %}<div class="kv"><div class="kv-label">Средняя цена</div><div class="kv-value">{{ stats.avg_price_num|round(0)|int }} ₽</div></div>{% endif %}
+  {% if stats.styles %}<div class="kv"><div class="kv-label">Стилей</div><div class="kv-value">{{ stats.styles }}</div></div>{% endif %}
+  {% if stats.with_photos %}<div class="kv"><div class="kv-label">С фото</div><div class="kv-value">{{ stats.with_photos }}</div></div>{% endif %}
+</div>
+
+{% if style_breakdown %}
+  <h2 class="section-title">🎨 Распределение по стилям</h2>
+  <div class="grid-tight">
+    {% for s in style_breakdown %}
+      <a class="stat-card" href="{{ url_for('style_detail', slug=s.slug) }}">
+        <span class="label">{{ s.style }}</span>
+        <span class="num">{{ s.count }}</span>
+      </a>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<h2 class="section-title">🍺 Все позиции пивоварни</h2>
+<form class="filters-bar" method="get">
+  <select name="style">
+    <option value="">Все стили</option>
+    {% for st in style_breakdown %}
+      <option value="{{ st.style }}" {{ 'selected' if current_style == st.style }}>{{ st.style }} ({{ st.count }})</option>
+    {% endfor %}
+  </select>
+  <button class="btn btn-primary" type="submit">Применить</button>
+  {% if current_style %}<a class="btn" href="{{ url_for('brewery_detail', slug=brewery_slug) }}">Сбросить</a>{% endif %}
+</form>
+
+<div class="grid">
+  {% for b in beers %}
+    <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+      <div class="card-img">
+        {% if b.local_image %}
+          <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+        {% else %}
+          <span class="no-img">🍺</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="card-name">{{ b.name }}</div>
+        {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
+        <div class="card-meta">
+          {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
+          {% if b.volume %}<span class="pill">{{ b.volume }} мл</span>{% endif %}
+          {% if b.price %}<span class="pill price">{{ b.price }}</span>{% endif %}
+        </div>
+      </div>
+    </a>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Пивовары — Пивная энциклопедия{% endblock %}
+
+{% block content %}
+<h1 class="page-title">🏭 Пивовары</h1>
+<div class="page-subtitle">{{ breweries|length }} пивоварен в базе</div>
+
+<div class="filters-bar">
+  <input id="breweryFilter" type="text" placeholder="Фильтр по названию..." class="grow">
+</div>
+
+<div class="grid-tight" id="breweryList">
+  {% for b in breweries %}
+    <a class="stat-card brewery-item" data-name="{{ (b.producer or '')|lower }}" href="{{ url_for('brewery_detail', slug=b.slug) }}">
+      <span class="label">{{ b.producer or 'Без названия' }}</span>
+      <span class="num">{{ b.count }}</span>
+      {% if b.country %}<span class="label">{{ b.country }}</span>{% endif %}
+    </a>
+  {% endfor %}
+</div>
+
+<script>
+document.getElementById('breweryFilter').addEventListener('input', (e) => {
+  const v = e.target.value.toLowerCase();
+  document.querySelectorAll('.brewery-item').forEach(el => {
+    el.style.display = el.dataset.name.includes(v) ? '' : 'none';
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Все стили — Пивная энциклопедия{% endblock %}
+
+{% block content %}
+<h1 class="page-title">🎨 Стили</h1>
+<div class="page-subtitle">{{ styles|length }} стилей в базе, {{ guide_count }} имеют подробное описание</div>
+
+<div class="grid">
+  {% for s in styles %}
+    <a class="stat-card" href="{{ url_for('style_detail', slug=s.slug) }}">
+      <span class="label">
+        {{ s.style }}
+        {% if s.in_guide %}<span class="badge ok" title="Есть описание BJCP">★</span>{% endif %}
+      </span>
+      <span class="num">{{ s.count }}</span>
+      <span class="label">{{ '%.1f'|format(s.avg_abv) if s.avg_abv else '—' }}% среднее ABV</span>
+    </a>
+  {% endfor %}
+</div>
+{% endblock %}

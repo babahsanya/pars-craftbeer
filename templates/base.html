@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Пивная энциклопедия{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="logo" href="{{ url_for('index') }}">🍺 <span>Пивная энциклопедия</span></a>
+        <nav class="main-nav">
+          <a href="{{ url_for('index') }}">Главная</a>
+          <a href="{{ url_for('catalog') }}">Каталог</a>
+          <a href="{{ url_for('styles') }}">Стили</a>
+          <a href="{{ url_for('breweries') }}">Пивовары</a>
+          <a href="{{ url_for('top') }}">Подборки</a>
+          <a href="{{ url_for('random_beer') }}">🎲 Случайное</a>
+        </nav>
+        <form class="search-form" action="{{ url_for('search') }}" method="get" autocomplete="off">
+          <input id="globalSearch" type="text" name="q" placeholder="Название, пивовар, стиль..." value="{{ q|default('') }}" />
+          <div id="suggestBox" class="suggest-box" hidden></div>
+          <button type="submit">Поиск</button>
+        </form>
+      </div>
+    </header>
+
+    <main class="container">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flashes">
+            {% for cat, msg in messages %}
+              <div class="flash flash-{{ cat }}">{{ msg }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <span>Данные: <a href="https://craftbeer78.ru" target="_blank" rel="noopener">craftbeer78.ru</a> • Стили: BJCP 2021</span>
+        <span>Админ-просмотр БД: <a href="/table/products_full">/table/products_full</a></span>
+      </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

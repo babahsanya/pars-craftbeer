@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Подборки — Пивная энциклопедия{% endblock %}
+
+{% block content %}
+<h1 class="page-title">📊 Подборки</h1>
+<div class="page-subtitle">Срезы по базе: самое крепкое, лёгкое, новинки и топ стилей</div>
+
+<h2 class="section-title">💪 Самое крепкое (топ-12)</h2>
+<div class="grid">
+  {% for b in strongest %}
+    <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+      <div class="card-img">
+        {% if b.local_image %}
+          <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+        {% else %}
+          <span class="no-img">🍺</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="card-name">{{ b.name }}</div>
+        <div class="card-producer">{{ b.producer or '' }}</div>
+        <div class="card-meta"><span class="pill abv">{{ b.abv }}%</span></div>
+      </div>
+    </a>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">🪶 Самое лёгкое с алкоголем (топ-12)</h2>
+<div class="grid">
+  {% for b in lightest %}
+    <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+      <div class="card-img">
+        {% if b.local_image %}
+          <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+        {% else %}
+          <span class="no-img">🍺</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="card-name">{{ b.name }}</div>
+        <div class="card-producer">{{ b.producer or '' }}</div>
+        <div class="card-meta"><span class="pill abv">{{ b.abv }}%</span></div>
+      </div>
+    </a>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">🆕 Новинки (по дате парсинга)</h2>
+<div class="grid">
+  {% for b in newest %}
+    <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+      <div class="card-img">
+        {% if b.local_image %}
+          <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+        {% else %}
+          <span class="no-img">🍺</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="card-name">{{ b.name }}</div>
+        <div class="card-producer">{{ b.producer or '' }}</div>
+        {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
+      </div>
+    </a>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">💰 Самое доступное (топ-12 по низкой цене)</h2>
+<div class="grid">
+  {% for b in cheapest %}
+    <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+      <div class="card-img">
+        {% if b.local_image %}
+          <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+        {% else %}
+          <span class="no-img">🍺</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="card-name">{{ b.name }}</div>
+        <div class="card-producer">{{ b.producer or '' }}</div>
+        <div class="card-meta"><span class="pill price">{{ b.price }}</span></div>
+      </div>
+    </a>
+  {% endfor %}
+</div>
+{% endblock %}
