@@ -1092,16 +1092,49 @@ class CraftBeerGlobalParser:
                     )
                     if candidate:
                         img_candidates.append(candidate)
-            # Приоритет 2: любые img с /images_beers/ в src/data-src
-            for img_elem in soup.select("img"):
-                if isinstance(img_elem, Tag):
-                    candidate = str(
-                        img_elem.get("data-src") or img_elem.get("src") or ""
-                    )
-                    if "/images_beers/" in candidate:
-                        img_candidates.append(candidate)
+            # Приоритет 2: фото ТОЛЬКО из контейнеров галереи товара.
+            # ВАЖНО: сайт кладёт 20 чужих фото в div.beer_logo (блок «похожие
+            # товары»). Раньше мы собирали все img[src*="/images_beers/"] и
+            # получали чужие картинки в галерее пива. Теперь берём только из
+            # контейнеров настоящей галереи товара.
+            if not img_candidates:
+                gallery_imgs = soup.select(
+                    '.beer_page_image img, .beer_page_image_500 img, '
+                    '.product_page_image img, .product_page_image_500 img'
+                )
+                for img_elem in gallery_imgs:
+                    if isinstance(img_elem, Tag):
+                        candidate = str(
+                            img_elem.get("data-src") or img_elem.get("src") or ""
+                        )
+                        if candidate:
+                            img_candidates.append(candidate)
+            # Приоритет 3 (fallback): itemprop="contentUrl" мог отсутствовать,
+            # а контейнеры — называться иначе. Берём img внутри элемента с
+            # itemprop="image" (структурная разметка), но НЕ трогаем .beer_logo.
+            if not img_candidates:
+                for img_elem in soup.select('[itemprop="image"] img, img[itemprop="image"]'):
+                    if isinstance(img_elem, Tag):
+                        # проверяем что предок НЕ .beer_logo
+                        ancestor = img_elem.parent
+                        in_similar = False
+                        for _ in range(4):
+                            if ancestor is None or not hasattr(ancestor, 'get'):
+                                break
+                            cls = ' '.join(ancestor.get('class', []))
+                            if 'beer_logo' in cls or 'similar' in cls or 'related' in cls or 'recommend' in cls:
+                                in_similar = True
+                                break
+                            ancestor = ancestor.parent
+                        if in_similar:
+                            continue
+                        candidate = str(
+                            img_elem.get("data-src") or img_elem.get("src") or "")
+                        if candidate:
+                            img_candidates.append(candidate)
 
-            # Нормализуем, фильтруем, убираем дубли
+            # Нормализуем, фильтруем (только /images_beers/), убираем дубли.
+            # Дополнительно исключаем .svg и служебные — _is_beer_photo.
             normalized: list[str] = []
             for c in img_candidates:
                 if not c:
