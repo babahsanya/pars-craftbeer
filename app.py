@@ -983,26 +983,27 @@ def status():
     first_seen = chrono["mn"] if chrono else None
     last_seen = chrono["mx"] if chrono else None
 
-    # ETA: берём скорость по последним ~50 записям
+    # ETA: берём скорость по последним ~50 записям (расчёт в SQL, в UTC)
     eta_text = ""
     try:
-        recent = cur.execute(
-            "SELECT updated_at FROM parse_progress ORDER BY updated_at DESC LIMIT 50"
-        ).fetchall()
-        if len(recent) >= 10:
-            from datetime import datetime
-            times = [datetime.fromisoformat(r["updated_at"].replace(" ", "T")) for r in recent if r["updated_at"]]
-            if times:
-                span = (max(times) - min(times)).total_seconds()
-                speed = len(times) / span if span > 0 else 0
-                if speed > 0:
-                    eta_sec = remaining / speed
-                    if eta_sec >= 3600:
-                        eta_text = f"{int(eta_sec // 3600)} ч {int((eta_sec % 3600) // 60)} мин"
-                    elif eta_sec >= 60:
-                        eta_text = f"{int(eta_sec // 60)} мин"
-                    else:
-                        eta_text = f"{int(eta_sec)} сек"
+        # Разница между самой старой и новой из последних 50 записей (в сек)
+        span_row = cur.execute(
+            "SELECT CAST(strftime('%s', MAX(updated_at)) AS INTEGER) - "
+            "CAST(strftime('%s', MIN(updated_at)) AS INTEGER) AS span, "
+            "COUNT(*) AS n FROM ("
+            "  SELECT updated_at FROM parse_progress ORDER BY updated_at DESC LIMIT 50"
+            ")"
+        ).fetchone()
+        if span_row and span_row["n"] and span_row["n"] >= 10 and span_row["span"] and span_row["span"] > 0:
+            speed = span_row["n"] / span_row["span"]
+            if speed > 0:
+                eta_sec = remaining / speed
+                if eta_sec >= 3600:
+                    eta_text = f"{int(eta_sec // 3600)} ч {int((eta_sec % 3600) // 60)} мин"
+                elif eta_sec >= 60:
+                    eta_text = f"{int(eta_sec // 60)} мин"
+                else:
+                    eta_text = f"{int(eta_sec)} сек"
     except Exception:
         pass
 
@@ -1039,15 +1040,75 @@ def status():
     ).fetchone()[0]
     styles_in_guide = cur.execute("SELECT COUNT(*) FROM beer_styles").fetchone()[0]
 
-    # Статус-метка
+    # ===================================================================
+    # ОПРЕДЕЛЕНИЕ СОСТОЯНИЯ ПАРСЕРА (жив/висит/завершён)
+    # Ключевая логика дашборда: сравниваем время последней записи в
+    # parse_progress с текущим. Если запись свежая (< 90 сек) — парсер
+    # активен. Если давно (> 90 сек) и есть что парсить — скорее всего висит
+    # или в паузе circuit breaker.
+    #
+    # ВАЖНО: SQLite CURRENT_TIMESTAMP хранится в UTC, а datetime.now() —
+    # локальное время. Поэтому разницу считаем ВНУТРИ SQL через
+    # strftime('%s', 'now') — тоже UTC, корректное сравнение.
+    # ===================================================================
+    health = "idle"
+    health_icon = "⚪"
+    health_title = "Парсер не запущен"
+    health_sub = "Запустите: python craftbeer_global_parser.py --refresh"
+    last_activity_ago = None
+
+    if last_seen:
+        # Считаем возраст последней записи прямо в SQL (обе даты в UTC)
+        age_row = cur.execute(
+            "SELECT CAST(strftime('%s', 'now') AS INTEGER) - "
+            "CAST(strftime('%s', MAX(updated_at)) AS INTEGER) AS age "
+            "FROM parse_progress"
+        ).fetchone()
+        if age_row and age_row["age"] is not None:
+            last_activity_ago = age_row["age"]
+
     if total_done == 0:
-        status_label = "⚪ Парсинг ещё не запускался"
-    elif remaining == 0 and errors == 0:
-        status_label = "🎉 Полностью завершено"
+        health = "idle"
+        health_icon = "⚪"
+        health_title = "Парсинг ещё не запускался"
+        health_sub = "Запустите: python craftbeer_global_parser.py --refresh"
     elif remaining == 0:
-        status_label = f"⚠️ Завершено с ошибками ({errors} — перепроверить через --failed-only)"
-    else:
-        status_label = "🔄 Парсинг идёт"
+        if errors == 0:
+            health = "done"
+            health_icon = "🎉"
+            health_title = "Парсинг полностью завершён"
+            health_sub = f"Все {total_target} позиций обработаны успешно"
+        else:
+            health = "warn"
+            health_icon = "⚠️"
+            health_title = "Парсинг завершён с ошибками"
+            health_sub = f"{errors} ошибок — перепроверьте: --refresh --failed-only"
+    elif last_activity_ago is not None:
+        if last_activity_ago < 90:
+            health = "running"
+            health_icon = "🟢"
+            ago = f"{int(last_activity_ago)} сек назад"
+            health_title = "Парсер работает"
+            health_sub = f"Последняя запись: {ago} · успешность {success_rate:.0f}%"
+        elif last_activity_ago < 300:
+            health = "waiting"
+            health_icon = "🟡"
+            ago_min = int(last_activity_ago // 60)
+            ago_sec = int(last_activity_ago % 60)
+            health_title = "Парсер в паузе"
+            health_sub = (
+                f"Нет активности {ago_min} мин {ago_sec} сек — вероятно "
+                f"circuit breaker или медленный ответ сайта"
+            )
+        else:
+            health = "stalled"
+            health_icon = "🔴"
+            ago_min = int(last_activity_ago // 60)
+            health_title = "Парсер похоже завис"
+            health_sub = (
+                f"Нет активности {ago_min} мин. Перезапустите: "
+                f"python craftbeer_global_parser.py --refresh (продолжит с места)"
+            )
 
     return render_template(
         "status.html",
@@ -1058,14 +1119,16 @@ def status():
         remaining=remaining,
         pct=pct,
         success_rate=success_rate,
-        first_seen=first_seen,
-        last_seen=last_seen,
         eta_text=eta_text,
         fillness=fillness,
         with_photos=with_photos,
         styles_in_guide=styles_in_guide,
-        status_label=status_label,
         error_breakdown=error_breakdown,
+        health=health,
+        health_icon=health_icon,
+        health_title=health_title,
+        health_sub=health_sub,
+        last_seen=last_seen,
     )
 
 
