@@ -269,18 +269,29 @@ def search():
     results = []
     correction = None
     candidates = []
+    groups = []
     if q and len(q) >= 2:
         db = get_db()
         res = search_engine.search(q, db, limit=60)
         results = res["results"]
         correction = res.get("correction")
         candidates = res.get("candidates", [])
+        groups = res.get("groups", [])
+        # подтягиваем local_image для всех результатов
+        for item in results:
+            if item.get("image") is None:
+                row = db.execute(
+                    "SELECT local_image FROM products_full WHERE id = ?", (item["id"],)
+                ).fetchone()
+                item["image"] = static_url(row["local_image"]) if row and row["local_image"] else None
+            item["url"] = url_for("beer_detail", beer_id=item["id"])
     return render_template(
         "search.html",
         q=q,
         results=results,
         correction=correction,
         candidates=candidates,
+        groups=groups,
     )
 
 
@@ -389,9 +400,22 @@ def api_search():
             "image": img,
             "url": url_for("beer_detail", beer_id=item["id"]),
             "score": item["score"],
+            "tier": item["tier"],
         })
+    # Группы для UI (с теми же image/url, что и в results)
+    id_to_item = {it["id"]: it for it in results}
+    groups = []
+    for g in res.get("groups", []):
+        group_items = []
+        for gi in g["items"]:
+            enriched = id_to_item.get(gi["id"])
+            if enriched:
+                group_items.append(enriched)
+        if group_items:
+            groups.append({"tier": g["tier"], "label": g["label"], "items": group_items})
     return jsonify({
         "results": results,
+        "groups": groups,
         "count": res["count"],
         "correction": res.get("correction"),
         "candidates": res.get("candidates", []),

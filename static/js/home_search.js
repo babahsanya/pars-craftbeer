@@ -64,7 +64,20 @@
         `<a href="/search?q=${encodeURIComponent(data.correction)}"><strong>${escapeHtml(data.correction)}</strong></a>?</span>` +
         `</div>`;
     }
-    html += data.results.map(renderCard).join("");
+    // Если есть группы — рендерим по группам с заголовками
+    if (data.groups && data.groups.length > 0) {
+      html += `<div style="grid-column: 1 / -1; display: flex; flex-direction: column; gap: 16px;">`;
+      for (const g of data.groups) {
+        html +=
+          `<div class="search-group">` +
+          `<div class="search-group-header">${escapeHtml(g.label)} <span class="search-group-count">${g.items.length}</span></div>` +
+          `<div class="grid">` + g.items.map(renderCard).join("") + `</div>` +
+          `</div>`;
+      }
+      html += `</div>`;
+    } else {
+      html += data.results.map(renderCard).join("");
+    }
     resultsBox.innerHTML = html;
   }
 

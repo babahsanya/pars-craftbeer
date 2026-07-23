@@ -26,30 +26,59 @@
 <div class="page-subtitle">Найдено {{ results|length }} позиций</div>
 
 {% if results %}
-  <div class="grid">
-    {% for b in results %}
-      <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
-        <div class="card-img">
-          {% if b.local_image %}
-            <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
-          {% elif b.image %}
-            <img src="{{ b.image }}" alt="{{ b.name }}" loading="lazy">
-          {% else %}
-            <span class="no-img">🍺</span>
-          {% endif %}
+  {% if groups %}
+    {# Группированный вывод: Точные / По пивовару / Частичные / Похожие #}
+    {% for g in groups %}
+      <div class="search-group">
+        <div class="search-group-header">{{ g.label }} <span class="search-group-count">{{ g['items']|length }}</span></div>
+        <div class="grid">
+          {% for b in g['items'] %}
+            <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+              <div class="card-img">
+                {% if b.image %}
+                  <img src="{{ b.image }}" alt="{{ b.name }}" loading="lazy">
+                {% else %}
+                  <span class="no-img">🍺</span>
+                {% endif %}
+              </div>
+              <div class="card-body">
+                <div class="card-name">{{ b.name }}</div>
+                <div class="card-producer">{{ b.producer or '' }}</div>
+                {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
+                <div class="card-meta">
+                  {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
+                  {% if b.volume %}<span class="pill">{{ b.volume }} мл</span>{% endif %}
+                </div>
+              </div>
+            </a>
+          {% endfor %}
         </div>
-        <div class="card-body">
-          <div class="card-name">{{ b.name }}</div>
-          <div class="card-producer">{{ b.producer or '' }}</div>
-          {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
-          <div class="card-meta">
-            {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
-            {% if b.volume %}<span class="pill">{{ b.volume }} мл</span>{% endif %}
-          </div>
-        </div>
-      </a>
+      </div>
     {% endfor %}
-  </div>
+  {% else %}
+    <div class="grid">
+      {% for b in results %}
+        <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+          <div class="card-img">
+            {% if b.image %}
+              <img src="{{ b.image }}" alt="{{ b.name }}" loading="lazy">
+            {% else %}
+              <span class="no-img">🍺</span>
+            {% endif %}
+          </div>
+          <div class="card-body">
+            <div class="card-name">{{ b.name }}</div>
+            <div class="card-producer">{{ b.producer or '' }}</div>
+            {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
+            <div class="card-meta">
+              {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
+              {% if b.volume %}<span class="pill">{{ b.volume }} мл</span>{% endif %}
+            </div>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
 {% else %}
   <div class="empty-state">
     <div class="big">🔍</div>

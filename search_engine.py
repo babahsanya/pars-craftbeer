@@ -206,29 +206,89 @@ def generate_candidates(q: str) -> list[str]:
 # 5. FUZZY-РАНЖИРОВАНИЕ
 # =========================================================================
 
-def score_match(query_norm: str, name: str, producer: str) -> int:
-    """Оценка релевантности 0-100 для одной позиции.
+# Разделитель слов: пробелы, пунктуация, дефисы. Сохраняем кириллицу/латиницу.
+_TOKEN_SPLIT_RE = re.compile(r"[^\w]+", re.UNICODE)
 
-    Стратегия: берём максимум из нескольких метрик rapidfuzz,
-    с бустом за совпадение по названию пива.
+
+def _tokenize(text: str) -> list[str]:
+    """Разбивает текст на токены (слева направо), нижний регистр."""
+    return [t for t in _TOKEN_SPLIT_RE.split(text.lower()) if t]
+
+
+def score_match(query_norm: str, name: str, producer: str) -> tuple[int, str]:
+    """Оценка релевантности для одной позиции.
+
+    Возвращает (score 0-100, tier) где tier:
+      - 'exact'    — точное совпадение (слово целиком или название целиком)
+      - 'word'     — слово из запроса найдено как отдельное слово в названии
+      - 'producer' — совпадение по пивовару
+      - 'partial'  — подстрока внутри слова
+      - 'fuzzy'    — нечёткое совпадение (опечатка)
+
+    Иерархия важнее абсолютного score: exact > word > producer > partial > fuzzy.
     """
     if not name:
         name = ""
     producer = producer or ""
+    q = query_norm
+    name_l = name.lower()
+    prod_l = producer.lower()
 
-    # partial_ratio — частичное совпадение (найдёт 'ipa' в 'american ipa')
-    name_partial = fuzz.partial_ratio(query_norm, name.lower())
-    # token_sort_ratio — слова в любом порядке
-    name_token = fuzz.token_sort_ratio(query_norm, name.lower())
-    # producer
-    prod_partial = fuzz.partial_ratio(query_norm, producer.lower())
+    q_tokens = _tokenize(q)
+    name_tokens = _tokenize(name)
 
-    # Максимальный score по названию (с весом 1.0)
+    # --- TIER 'exact': запрос целиком = названию целиком (или producer) ---
+    if q == name_l or q == prod_l:
+        return 100, "exact"
+    # запрос = одному из слов названия (coven = Coven в "Coven XXX")
+    if q in name_tokens:
+        # но если слово короче 3 символов — это слабый сигнал, понизим
+        return 98, "word"
+    if q in _tokenize(producer):
+        return 95, "producer"
+
+    # --- TIER 'word': все токены запроса найдены как отдельные слова ---
+    if q_tokens and all(t in name_tokens for t in q_tokens):
+        return 93, "word"
+
+    # --- Частичное совпадение: rapidfuzz ---
+    name_partial = fuzz.partial_ratio(q, name_l)
+    name_token = fuzz.token_sort_ratio(q, name_l)
+    prod_partial = fuzz.partial_ratio(q, prod_l)
+
     name_score = max(name_partial, name_token)
-    # Producer — с меньшим весом
-    prod_score = prod_partial * 0.75
+    prod_score = prod_partial
 
-    return int(max(name_score, prod_score))
+    # Producer совпадает сильно — отдельный тир
+    if prod_score >= 80 and prod_score > name_score:
+        return int(prod_score * 0.85), "producer"
+
+    # Подстрока внутри слова (марципан содержит 'ипа') — partial тир
+    if name_score >= 80:
+        # Проверим: может быть запрос = началу слова (префикс) — это лучше
+        for tok in name_tokens:
+            if tok.startswith(q) and len(q) >= 3:
+                return 88, "word"  # префикс слова = почти точное
+        return int(name_score * 0.7), "partial"
+
+    # Слабое совпадение
+    if name_score >= 60:
+        return int(name_score * 0.6), "partial"
+
+    return 0, "fuzzy"
+
+
+# Приоритет тиров для сортировки: ниже число = выше в результатах.
+_TIER_PRIORITY = {"exact": 0, "word": 1, "producer": 2, "partial": 3, "fuzzy": 4}
+
+# Человекопонятные заголовки групп для UI
+TIER_LABELS = {
+    "exact": "🎯 Точные совпадения",
+    "word": "✅ Точные совпадения по словам",
+    "producer": "🏭 По пивовару",
+    "partial": "📝 Частичные совпадения",
+    "fuzzy": "🔍 Похожие (возможно с опечатками)",
+}
 
 
 # =========================================================================
@@ -285,14 +345,14 @@ def search(
     cur = db.execute(sql, params)
     rows = cur.fetchall()
 
-    # Дедуп по id + расчёт score
+    # Дедуп по id + расчёт score и tier
     seen: set[int] = set()
     scored: list[dict[str, Any]] = []
     for r in rows:
         if r["id"] in seen:
             continue
         seen.add(r["id"])
-        score = score_match(norm, r["name"] or "", r["producer"] or "")
+        score, tier = score_match(norm, r["name"] or "", r["producer"] or "")
         scored.append({
             "id": r["id"],
             "name": r["name"],
@@ -305,23 +365,46 @@ def search(
             "image": None,  # заполнит app.py через url_for
             "url": None,
             "score": score,
+            "tier": tier,
         })
-
-    # Сортировка: по score убыванию
-    scored.sort(key=lambda x: x["score"], reverse=True)
 
     # FALLBACK ДЛЯ ОПЕЧАТОК: если SQL-поиск по кандидатам дал мало результатов,
     # ищем по fuzzy (rapidfuzz) по всем названиям. Это покрывает опечатки
     # типа 'ipf'→'ipa', 'хзут'→'стаут', которые LIKE не найдёт как подстроку.
     if len(scored) < 3 and len(norm) >= 3:
         fuzzy_hits = _fuzzy_fallback(norm, db, limit=limit)
-        # добавляем только те, которых ещё нет (по id)
         existing_ids = {item["id"] for item in scored}
         for hit in fuzzy_hits:
             if hit["id"] not in existing_ids:
                 scored.append(hit)
 
+    # Сортировка: сначала по приоритету tier, внутри tier по score
+    scored.sort(key=lambda x: (_TIER_PRIORITY.get(x["tier"], 9), -x["score"]))
+
     results = scored[:limit]
+
+    # Группировка по tier для UI (с сохранением порядка)
+    groups: list[dict[str, Any]] = []
+    current_tier = None
+    current_items: list[dict[str, Any]] = []
+    for item in results:
+        if item["tier"] != current_tier:
+            if current_items:
+                groups.append({
+                    "tier": current_tier,
+                    "label": TIER_LABELS.get(current_tier, current_tier),
+                    "items": current_items,
+                })
+            current_tier = item["tier"]
+            current_items = [item]
+        else:
+            current_items.append(item)
+    if current_items:
+        groups.append({
+            "tier": current_tier,
+            "label": TIER_LABELS.get(current_tier, current_tier),
+            "items": current_items,
+        })
 
     # Подсказка «может вы имели в виду» — только если результатов мало или нет
     correction = None
@@ -330,6 +413,7 @@ def search(
 
     return {
         "results": results,
+        "groups": groups,
         "count": len(scored),
         "candidates": candidates,
         "correction": correction,
@@ -401,7 +485,7 @@ def _fuzzy_fallback(
             "image": None,
             "url": None,
             "score": score,
-            "fuzzy": True,  # пометка для отладки
+            "tier": "fuzzy",  # эти результаты — только через нечёткий поиск
         })
     out.sort(key=lambda x: x["score"], reverse=True)
     return out
