@@ -49,7 +49,7 @@
         {% if b.local_image %}
           <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
         {% else %}
-          <span class="no-img">🍺</span>
+          <span class="no-img"><span class="no-img-letter">{{ (b.name or '?')[0] }}</span></span>
         {% endif %}
       </div>
       <div class="card-body">
@@ -63,5 +63,14 @@
       </div>
     </a>
   {% endfor %}
+</div>
+
+{% if has_more %}
+  <div style="text-align:center; margin-top:24px;">
+    <a class="btn btn-primary" href="{{ url_for('brewery_detail', slug=brewery_slug, **next_page_params) }}">Показать ещё {{ page_size }} →</a>
+  </div>
+{% endif %}
+<div class="page-subtitle" style="text-align:center; margin-top:12px;">
+  Показано {{ beers|length }} из {{ total_brewery }}
 </div>
 {% endblock %}

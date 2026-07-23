@@ -25,6 +25,23 @@
     {% endfor %}
   </div>
 
+  {# Панель управления: сортировка + вид #}
+  <div class="catalog-toolbar">
+    <div class="ct-sort">
+      <span class="ct-label">Сортировка:</span>
+      <select name="sort" class="ct-select" onchange="this.form.submit()">
+        {% for key, label in sort_options.items() %}
+          <option value="{{ key }}" {{ 'selected' if filters.sort == key }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ct-view">
+      <button type="button" class="view-btn {{ 'active' if filters.view != 'list' }}" data-view="grid" title="Сетка">▦</button>
+      <button type="button" class="view-btn {{ 'active' if filters.view == 'list' }}" data-view="list" title="Список">☰</button>
+    </div>
+  </div>
+  <input type="hidden" name="view" id="viewInput" value="{{ filters.view }}">
+
   {# Сворачиваемая панель фильтров #}
   <div class="filters-toggle">
     <button type="button" id="filtersToggleBtn" class="btn">
@@ -89,14 +106,16 @@
 </form>
 
 {% if beers %}
-  <div class="grid">
+  <div class="catalog-grid view-{{ filters.view }}">
     {% for b in beers %}
       <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
         <div class="card-img">
           {% if b.local_image %}
             <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
           {% else %}
-            <span class="no-img">🍺</span>
+            <span class="no-img">
+              <span class="no-img-letter">{{ (b.name or '?')[0] }}</span>
+            </span>
           {% endif %}
         </div>
         <div class="card-body">
@@ -145,5 +164,28 @@ toggleBtn.addEventListener('click', () => {
   panel.classList.toggle('collapsed');
   label.textContent = panel.classList.contains('collapsed') ? 'Фильтры ▾' : 'Фильтры ▴';
 });
+
+// Переключатель вида (сетка/список) — обновляет hidden input и сабмитит форму
+document.querySelectorAll('.view-btn[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.getElementById('viewInput').value = btn.dataset.view;
+    // сохраняем в localStorage для других страниц
+    try { localStorage.setItem('catalog_view', btn.dataset.view); } catch(e) {}
+    document.getElementById('catalogForm').submit();
+  });
+});
+
+// Восстанавливаем вид из localStorage если в URL не указан явно
+(function() {
+  const urlView = new URLSearchParams(window.location.search).get('view');
+  if (!urlView) {
+    try {
+      const saved = localStorage.getItem('catalog_view');
+      if (saved && saved !== 'grid') {
+        document.getElementById('viewInput').value = saved;
+      }
+    } catch(e) {}
+  }
+})();
 </script>
 {% endblock %}

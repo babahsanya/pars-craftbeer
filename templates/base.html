@@ -5,13 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}Пивная энциклопедия{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    {# Анти-мигание: применяем тему до первой отрисовки, чтобы не было вспышки тёмной темы #}
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('theme') || 'dark';
+          document.documentElement.dataset.theme = t;
+        } catch(e) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
     {% block head %}{% endblock %}
   </head>
   <body>
     <header class="site-header">
       <div class="header-inner">
+        <button class="menu-toggle" id="menuToggle" aria-label="Меню">☰</button>
         <a class="logo" href="{{ url_for('index') }}">🍺 <span>Пивная энциклопедия</span></a>
-        <nav class="main-nav">
+        <button class="theme-toggle" id="themeToggle" aria-label="Тема">🌙</button>
+        <nav class="main-nav" id="mainNav">
           <a href="{{ url_for('index') }}">Главная</a>
           <a href="{{ url_for('catalog') }}">Каталог</a>
           <a href="{{ url_for('style_families') }}">Стили</a>

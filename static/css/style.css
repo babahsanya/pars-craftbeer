@@ -11,6 +11,26 @@
   --chip: #1e293b;
   --good: #10b981;
   --bad: #ef4444;
+  --header-bg: rgba(11, 18, 32, 0.85);
+  --body-gradient: radial-gradient(1200px 600px at 10% 0%, #0f172a 0%, #0b1220 60%);
+}
+
+/* Светлая тема — переключается через data-theme="light" на <html> */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --panel-2: #f1f5f9;
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #0284c7;
+  --accent-2: #d97706;
+  --border: #e2e8f0;
+  --chip: #e2e8f0;
+  --good: #059669;
+  --bad: #dc2626;
+  --header-bg: rgba(255, 255, 255, 0.85);
+  --body-gradient: radial-gradient(1200px 600px at 10% 0%, #ffffff 0%, #f8fafc 60%);
 }
 
 * { box-sizing: border-box; }
@@ -18,7 +38,7 @@
 body {
   margin: 0;
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
-  background: radial-gradient(1200px 600px at 10% 0%, #0f172a 0%, #0b1220 60%);
+  background: var(--body-gradient);
   color: var(--text);
   min-height: 100vh;
   display: flex;
@@ -30,7 +50,7 @@ a:hover { text-decoration: underline; }
 
 /* ===== HEADER ===== */
 .site-header {
-  background: rgba(11, 18, 32, 0.85);
+  background: var(--header-bg);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
   position: sticky;
@@ -1033,4 +1053,200 @@ a:hover { text-decoration: underline; }
   font-size: 12px;
   color: var(--accent);
   font-weight: 600;
+}
+
+/* ===== CATALOG TOOLBAR (сортировка + вид) ===== */
+.catalog-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.ct-sort { display: flex; align-items: center; gap: 8px; }
+.ct-label { font-size: 13px; color: var(--muted); }
+.ct-select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.ct-select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+.ct-view { display: flex; gap: 4px; }
+.view-btn {
+  width: 38px; height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s ease;
+}
+.view-btn:hover { border-color: var(--accent); color: var(--text); }
+.view-btn.active { background: var(--accent); color: #0b1220; border-color: var(--accent); }
+
+/* ===== CATALOG GRID / LIST VIEW ===== */
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+/* Вид «список»: карточки в одну колонку, горизонтальная компоновка */
+.catalog-grid.view-list {
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.catalog-grid.view-list .beer-card {
+  flex-direction: row;
+  align-items: stretch;
+}
+.catalog-grid.view-list .card-img {
+  width: 120px;
+  aspect-ratio: 1;
+  flex-shrink: 0;
+}
+.catalog-grid.view-list .card-body {
+  padding: 12px 16px;
+  justify-content: center;
+}
+.catalog-grid.view-list .card-name { font-size: 16px; }
+
+/* ===== PLACEHOLDER без фото (вместо эмодзи) ===== */
+.no-img {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--panel-2), var(--panel));
+  font-size: 40px;
+  color: #334155;
+}
+.no-img-letter {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--muted);
+  opacity: 0.6;
+  text-transform: uppercase;
+}
+
+/* ===== ПЕРЕКЛЮЧАТЕЛЬ ТЕМЫ ===== */
+.theme-toggle {
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s ease;
+}
+.theme-toggle:hover { border-color: var(--accent); }
+
+/* ===== МОБИЛЬНАЯ АДАПТИВНОСТЬ ===== */
+@media (max-width: 768px) {
+  .header-inner {
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    gap: 10px;
+  }
+  .logo { font-size: 16px; }
+  .logo span { display: none; }  /* на мобилке только эмодзи */
+  /* Гамбургер-меню */
+  .menu-toggle {
+    display: flex;
+    order: -1;
+  }
+  .main-nav {
+    display: none;
+    flex-basis: 100%;
+    flex-direction: column;
+    gap: 0;
+    order: 3;
+  }
+  .main-nav.open {
+    display: flex;
+  }
+  .main-nav a {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+  }
+  .main-nav a:last-child { border-bottom: 0; }
+  /* Поиск на всю ширину */
+  .search-form {
+    order: 2;
+    flex-basis: 100%;
+    margin-left: 0;
+    min-width: 0;
+  }
+  .theme-toggle { order: 0; }
+
+  .container { padding: 16px 12px 40px; }
+  .hero { padding: 24px 18px; }
+  .hero h1 { font-size: 24px; }
+  .hero-search input { font-size: 15px; padding: 14px 16px; }
+
+  /* Карточки: 2 в ряд на телефоне */
+  .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .grid-tight { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .catalog-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .beer-card .card-name { font-size: 13px; }
+
+  /* Beer detail: фото сверху, контент ниже */
+  .beer-detail { grid-template-columns: 1fr; }
+  .gallery .main-photo { max-width: 320px; margin: 0 auto; }
+  .detail-header h1 { font-size: 22px; }
+  .kv-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+
+  /* Фильтры каталога в 1 колонку */
+  .filters-grid { grid-template-columns: 1fr; }
+  .catalog-toolbar { flex-direction: column; align-items: stretch; }
+  .ct-view { justify-content: flex-end; }
+
+  /* Чипсы семей — горизонтальный скролл */
+  .family-chips {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px;
+  }
+  .fam-chip { flex-shrink: 0; }
+
+  /* Сравнение — горизонтальный скролл таблицы */
+  .compare-table-wrap { overflow-x: auto; }
+  .compare-table { min-width: 600px; }
+
+  /* Style sections на мобилке в 1 колонку */
+  .style-sections { grid-template-columns: 1fr; }
+
+  /* Семьи стилей — 2 в ряд */
+  .family-card { padding: 14px; }
+  .family-card .fc-icon { width: 44px; height: 44px; font-size: 28px; }
+
+  /* Ранг-лист пивоварен — компактнее */
+  .rank-item { padding: 8px 10px; gap: 8px; }
+  .country-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+}
+
+/* Гамбургер скрыт на десктопе */
+.menu-toggle {
+  display: none;
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
 }

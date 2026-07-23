@@ -692,22 +692,33 @@ def brewery_detail(slug: str):
         {"style": r["style"], "count": r["c"], "slug": slugify(r["style"])} for r in style_rows
     ]
 
-    # Фильтр по стилю
+    # Фильтр по стилю + пагинация
     current_style = request.args.get("style") or ""
-    if current_style:
-        beers = db.execute(
-            "SELECT id, name, style, abv, volume, price, local_image FROM products_full "
-            "WHERE producer = ? AND style = ? ORDER BY name",
-            (target_producer, current_style),
-        ).fetchall()
-    else:
-        beers = db.execute(
-            "SELECT id, name, style, abv, volume, price, local_image FROM products_full "
-            "WHERE producer = ? ORDER BY name",
-            (target_producer,),
-        ).fetchall()
+    page = max(int(request.args.get("page", 1)), 1)
+    offset = (page - 1) * PAGE_SIZE
 
-    # Статистика
+    base_where = "producer = ?"
+    base_params: list = [target_producer]
+    if current_style:
+        base_where += " AND style = ?"
+        base_params.append(current_style)
+
+    beers = db.execute(
+        f"SELECT id, name, style, abv, volume, price, local_image FROM products_full "
+        f"WHERE {base_where} ORDER BY name LIMIT ? OFFSET ?",
+        base_params + [PAGE_SIZE + 1, offset],
+    ).fetchall()
+    has_more = len(beers) > PAGE_SIZE
+    beers = beers[:PAGE_SIZE]
+
+    total_brewery = db.execute(
+        f"SELECT COUNT(*) AS c FROM products_full WHERE {base_where}", base_params
+    ).fetchone()["c"]
+
+    # next_page_params: сохраняем style и добавляем page
+    next_page_params = {"style": current_style, "page": page + 1}
+
+    # Статистика (по всем позициям пивовара, без фильтра стиля)
     cur = db.execute(
         "SELECT COUNT(*) AS c, AVG(abv) AS a, COUNT(DISTINCT style) AS s, "
         "COUNT(local_image) AS photos FROM products_full WHERE producer = ?",
@@ -736,6 +747,11 @@ def brewery_detail(slug: str):
         style_breakdown=style_breakdown,
         beers=beers,
         current_style=current_style,
+        total_brewery=total_brewery,
+        page=page,
+        page_size=PAGE_SIZE,
+        has_more=has_more,
+        next_page_params=next_page_params,
     )
 
 
@@ -811,9 +827,23 @@ def catalog():
         "price_min": (request.args.get("price_min") or "").strip(),
         "price_max": (request.args.get("price_max") or "").strip(),
         "with_photo": (request.args.get("with_photo") or "").strip(),
+        "sort": (request.args.get("sort") or "name").strip(),
+        "view": (request.args.get("view") or "grid").strip(),
     }
     page = max(int(request.args.get("page", 1)), 1)
     offset = (page - 1) * PAGE_SIZE
+
+    # Белый список сортировок (защита от SQL-инъекций — имя колонки в SQL).
+    # Каждый ключ → готовый SQL-фрагмент ORDER BY.
+    sort_options = {
+        "name": "name",
+        "abv_desc": "abv DESC NULLS LAST",
+        "abv_asc": "abv ASC NULLS FIRST",
+        "price_asc": "CAST(REPLACE(REPLACE(REPLACE(price, ' ₽', ''), ' ', ''), CHAR(160), '') AS REAL) ASC NULLS LAST",
+        "price_desc": "CAST(REPLACE(REPLACE(REPLACE(price, ' ₽', ''), ' ', ''), CHAR(160), '') AS REAL) DESC NULLS LAST",
+        "newest": "parse_date DESC NULLS LAST",
+    }
+    order_sql = sort_options.get(filters["sort"], sort_options["name"])
 
     where = ["1=1"]
     params: list = []
@@ -868,7 +898,7 @@ def catalog():
     where_sql = " AND ".join(where)
     beers = db.execute(
         f"SELECT id, name, producer, style, style_family, abv, volume, price, local_image "
-        f"FROM products_full WHERE {where_sql} ORDER BY name LIMIT ? OFFSET ?",
+        f"FROM products_full WHERE {where_sql} ORDER BY {order_sql} LIMIT ? OFFSET ?",
         params + [PAGE_SIZE + 1, offset],
     ).fetchall()
     has_more = len(beers) > PAGE_SIZE
@@ -915,6 +945,14 @@ def catalog():
         style_options=style_options,
         country_options=country_options,
         family_chips=family_chips,
+        sort_options={
+            "name": "По названию (А-Я)",
+            "abv_desc": "По крепости (мощные)",
+            "abv_asc": "По крепости (лёгкие)",
+            "price_asc": "Сначала дешевле",
+            "price_desc": "Сначала дороже",
+            "newest": "Новинки",
+        },
         page=page,
         page_size=PAGE_SIZE,
         has_more=has_more,

@@ -103,3 +103,44 @@
     });
   });
 })();
+
+// ===== ПЕРЕКЛЮЧАТЕЛЬ ТЕМЫ (🌙/☀️) =====
+(function () {
+  const toggle = document.getElementById("themeToggle");
+  if (!toggle) return;
+
+  function updateButton() {
+    const theme = document.documentElement.dataset.theme || "dark";
+    toggle.textContent = theme === "dark" ? "🌙" : "☀️";
+  }
+
+  updateButton();
+
+  toggle.addEventListener("click", () => {
+    const current = document.documentElement.dataset.theme || "dark";
+    const next = current === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("theme", next); } catch (e) {}
+    updateButton();
+  });
+})();
+
+// ===== ГАМБУРГЕР-МЕНЮ (мобильное) =====
+(function () {
+  const toggle = document.getElementById("menuToggle");
+  const nav = document.getElementById("mainNav");
+  if (!toggle || !nav) return;
+
+  toggle.addEventListener("click", () => {
+    nav.classList.toggle("open");
+    toggle.textContent = nav.classList.contains("open") ? "✕" : "☰";
+  });
+
+  // Закрытие меню при клике на ссылку (мобильное)
+  nav.querySelectorAll("a").forEach((link) => {
+    link.addEventListener("click", () => {
+      nav.classList.remove("open");
+      toggle.textContent = "☰";
+    });
+  });
+})();
