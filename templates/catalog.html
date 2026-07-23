@@ -5,25 +5,87 @@
 <h1 class="page-title">📚 Каталог</h1>
 <div class="page-subtitle">Найдено: <strong>{{ total }}</strong> позиций</div>
 
-<form class="filters-bar" method="get">
-  <input class="grow" type="text" name="name" value="{{ filters.name }}" placeholder="Название...">
-  <input type="text" name="producer" value="{{ filters.producer }}" placeholder="Пивовар...">
-  <select name="style">
-    <option value="">Все стили</option>
-    {% for s in style_options %}
-      <option value="{{ s }}" {{ 'selected' if filters.style == s }}>{{ s }}</option>
+<form method="get" id="catalogForm">
+  {# сохраняем скрытые поля при переключении чипсов #}
+  <input type="hidden" name="family" id="familyInput" value="{{ filters.family }}">
+
+  {# Чипсы семей #}
+  <div class="family-chips family-chips-selectable">
+    <button type="button" class="fam-chip {{ 'active' if not filters.family }}" data-family="">
+      <span class="fc-emoji">🍺</span>
+      <span class="fc-name">Все</span>
+      <span class="fc-n">{{ total }}</span>
+    </button>
+    {% for f in family_chips %}
+      <button type="button" class="fam-chip {{ 'active' if filters.family == f.id }}" data-family="{{ f.id }}">
+        <span class="fc-emoji">{{ f.icon }}</span>
+        <span class="fc-name">{{ f.title }}</span>
+        <span class="fc-n">{{ f.count }}</span>
+      </button>
     {% endfor %}
-  </select>
-  <select name="country">
-    <option value="">Все страны</option>
-    {% for c in country_options %}
-      <option value="{{ c }}" {{ 'selected' if filters.country == c }}>{{ c }}</option>
-    {% endfor %}
-  </select>
-  <input type="number" name="abv_min" value="{{ filters.abv_min }}" placeholder="ABV от" step="0.1" style="width:90px">
-  <input type="number" name="abv_max" value="{{ filters.abv_max }}" placeholder="ABV до" step="0.1" style="width:90px">
-  <button class="btn btn-primary" type="submit">Применить</button>
-  <a class="btn" href="{{ url_for('catalog') }}">Сбросить</a>
+  </div>
+
+  {# Сворачиваемая панель фильтров #}
+  <div class="filters-toggle">
+    <button type="button" id="filtersToggleBtn" class="btn">
+      <span id="filtersToggleLabel">{{ 'Фильтры ▴' if filters.name or filters.producer or filters.style or filters.country or filters.abv_min or filters.abv_max or filters.price_min or filters.price_max or filters.with_photo else 'Фильтры ▾' }}</span>
+    </button>
+  </div>
+
+  <div class="filters-panel {{ 'collapsed' if not (filters.name or filters.producer or filters.style or filters.country or filters.abv_min or filters.abv_max or filters.price_min or filters.price_max or filters.with_photo) }}" id="filtersPanel">
+    <div class="filters-grid">
+      <div class="fg">
+        <label>Название</label>
+        <input type="text" name="name" value="{{ filters.name }}" placeholder="часть названия...">
+      </div>
+      <div class="fg">
+        <label>Пивовар</label>
+        <input type="text" name="producer" value="{{ filters.producer }}" placeholder="часть названия...">
+      </div>
+      <div class="fg">
+        <label>Конкретный стиль</label>
+        <select name="style">
+          <option value="">Все стили{% if filters.family %} семьи{% endif %}</option>
+          {% for s in style_options %}
+            <option value="{{ s }}" {{ 'selected' if filters.style == s }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="fg">
+        <label>Страна</label>
+        <select name="country">
+          <option value="">Все страны</option>
+          {% for c in country_options %}
+            <option value="{{ c }}" {{ 'selected' if filters.country == c }}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="fg">
+        <label>Крепость ABV %</label>
+        <div class="range2">
+          <input type="number" name="abv_min" value="{{ filters.abv_min }}" placeholder="от" step="0.1">
+          <input type="number" name="abv_max" value="{{ filters.abv_max }}" placeholder="до" step="0.1">
+        </div>
+      </div>
+      <div class="fg">
+        <label>Цена ₽</label>
+        <div class="range2">
+          <input type="number" name="price_min" value="{{ filters.price_min }}" placeholder="от">
+          <input type="number" name="price_max" value="{{ filters.price_max }}" placeholder="до">
+        </div>
+      </div>
+      <div class="fg fg-check">
+        <label>
+          <input type="checkbox" name="with_photo" value="1" {{ 'checked' if filters.with_photo }}>
+          Только с фото
+        </label>
+      </div>
+    </div>
+    <div class="filters-actions">
+      <button type="submit" class="btn btn-primary">Применить</button>
+      <a class="btn" href="{{ url_for('catalog') }}">Сбросить всё</a>
+    </div>
+  </div>
 </form>
 
 {% if beers %}
@@ -62,4 +124,26 @@
     <p>Ничего не найдено. Измените фильтры.</p>
   </div>
 {% endif %}
+
+<script>
+// Чипсы — переключение семьи без перезагрузки видимых фильтров
+document.querySelectorAll('.fam-chip[data-family]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.getElementById('familyInput').value = btn.dataset.family;
+    // сбрасываем конкретный стиль при смене семьи (он может не входить в новую)
+    const styleSel = document.querySelector('select[name="style"]');
+    if (styleSel) styleSel.value = '';
+    document.getElementById('catalogForm').submit();
+  });
+});
+
+// Сворачивание/разворот фильтров
+const toggleBtn = document.getElementById('filtersToggleBtn');
+const panel = document.getElementById('filtersPanel');
+const label = document.getElementById('filtersToggleLabel');
+toggleBtn.addEventListener('click', () => {
+  panel.classList.toggle('collapsed');
+  label.textContent = panel.classList.contains('collapsed') ? 'Фильтры ▾' : 'Фильтры ▴';
+});
+</script>
 {% endblock %}

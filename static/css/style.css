@@ -480,3 +480,199 @@ a:hover { text-decoration: underline; }
 .badge.ok { color: var(--good); background: rgba(16,185,129,0.12); }
 .badge.bad { color: var(--bad); background: rgba(239,68,68,0.12); }
 .badge.warn { color: var(--accent-2); background: rgba(245,158,11,0.12); }
+
+/* ===== HERO SEARCH (instant-поиск на главной) ===== */
+.hero-search {
+  max-width: 640px;
+  margin: 18px 0 4px;
+  position: relative;
+}
+.hero-search input {
+  width: 100%;
+  padding: 16px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.8);
+  color: var(--text);
+  font-size: 16px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.hero-search input:focus {
+  outline: 2px solid var(--accent);
+  border-color: transparent;
+}
+
+/* ===== FAMILY CHIPS (быстрые фильтры семей) ===== */
+.family-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.fam-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  font-family: inherit;
+}
+.fam-chip:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  text-decoration: none;
+}
+.fam-chip .fc-emoji { font-size: 16px; }
+.fam-chip .fc-name { font-weight: 500; }
+.fam-chip .fc-n {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: 11px;
+}
+/* активный чипс в каталоге */
+.fam-chip.active {
+  background: var(--accent);
+  color: #0b1220;
+  border-color: var(--accent);
+}
+.fam-chip.active .fc-n {
+  background: rgba(11,18,32,0.2);
+  color: #0b1220;
+}
+
+/* ===== FAMILY CARD (сетка семей на /style-families) ===== */
+.family-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  background: linear-gradient(135deg, rgba(17,24,39,0.95), rgba(15,23,42,0.7));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  text-decoration: none;
+  color: var(--text);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.family-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+  text-decoration: none;
+}
+.family-card .fc-icon {
+  font-size: 38px;
+  flex-shrink: 0;
+  width: 56px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--panel-2);
+  border-radius: 12px;
+}
+.family-card .fc-title { font-size: 16px; font-weight: 600; }
+.family-card .fc-count { font-size: 13px; color: var(--accent); margin-top: 2px; }
+.family-card .fc-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ===== FAMILY HERO (страница семьи) ===== */
+.family-hero {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: linear-gradient(135deg, rgba(56,189,248,0.1), rgba(17,24,39,0.5));
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 28px;
+  margin-bottom: 24px;
+}
+.family-hero .fh-icon {
+  font-size: 64px;
+  width: 96px; height: 96px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--panel);
+  border-radius: 18px;
+  flex-shrink: 0;
+}
+.family-hero h1 { margin: 0 0 6px; font-size: 28px; }
+.family-hero .fh-stats {
+  display: flex; gap: 18px; margin-top: 12px; flex-wrap: wrap;
+  font-size: 13px; color: var(--muted);
+}
+.family-hero .fh-stats strong { color: var(--text); font-size: 15px; }
+
+/* ===== STYLE TAGS (конкретные стили внутри семьи) ===== */
+.style-tags {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 20px;
+}
+.style-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.style-tag:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+.style-tag-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* ===== CATALOG FILTERS PANEL ===== */
+.filters-toggle { margin-bottom: 12px; }
+.filters-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 18px;
+  overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease, margin 0.25s ease;
+  max-height: 800px;
+}
+.filters-panel.collapsed {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-color: transparent;
+}
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.fg { display: flex; flex-direction: column; gap: 4px; }
+.fg label { font-size: 12px; color: var(--muted); font-weight: 500; }
+.fg input, .fg select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.fg-check { flex-direction: row; align-items: center; gap: 8px; }
+.fg-check label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.range2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.filters-actions {
+  display: flex; gap: 8px; margin-top: 14px;
+}
+.filters-actions .btn { font-size: 13px; }

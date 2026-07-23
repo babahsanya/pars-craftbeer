@@ -33,10 +33,19 @@ from flask import (
     Flask,
     abort,
     g,
+    jsonify,
     redirect,
     render_template,
     request,
     url_for,
+)
+
+from style_families import (
+    all_family_ids,
+    classify_style,
+    family_icon,
+    family_meta,
+    family_title,
 )
 
 APP_ROOT = Path(__file__).resolve().parent
@@ -209,6 +218,16 @@ def index():
     )
     random_beers = cur.fetchall()
 
+    # Чипсы семей стилей для быстрого входа
+    family_chips = []
+    for fid in all_family_ids():
+        icon, title, _ = family_meta(fid)
+        row = cur.execute(
+            "SELECT COUNT(*) AS n FROM products_full WHERE style_family = ?", (fid,)
+        ).fetchone()
+        family_chips.append({"id": fid, "icon": icon, "title": title, "count": row["n"]})
+    family_chips.sort(key=lambda f: (f["id"] == "other", -f["count"]))
+
     return render_template(
         "index.html",
         total_beers=total_beers,
@@ -220,6 +239,7 @@ def index():
         top_breweries=top_breweries,
         top_countries=top_countries,
         random_beers=random_beers,
+        family_chips=family_chips,
     )
 
 
@@ -310,6 +330,156 @@ def beer_detail(beer_id: int):
         style_slug=style_slug,
         brewery_slug=brewery_slug,
         similar=similar,
+    )
+
+
+@app.route("/api/search")
+def api_search():
+    """JSON: карточки пива для instant-поиска на главной.
+    Возвращает id, name, producer, style, style_family, abv, volume, price,
+    local_image, original_url — всё что нужно для рендера карточки на клиенте.
+    """
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"results": []})
+    db = get_db()
+    like = f"%{q}%"
+    rows = db.execute(
+        "SELECT id, name, producer, style, style_family, abv, volume, price, "
+        "local_image, original_url FROM products_full "
+        "WHERE name LIKE ? OR producer LIKE ? OR style LIKE ? "
+        "OR brewery_country LIKE ? OR substyle LIKE ? "
+        "ORDER BY CASE WHEN name LIKE ? THEN 0 ELSE 1 END, name LIMIT 24",
+        (like, like, like, like, like, like),
+    ).fetchall()
+    results = []
+    for r in rows:
+        results.append({
+            "id": r["id"],
+            "name": r["name"],
+            "producer": r["producer"],
+            "style": r["style"],
+            "style_family": r["style_family"],
+            "abv": r["abv"],
+            "volume": r["volume"],
+            "price": r["price"],
+            "image": static_url(r["local_image"]) if r["local_image"] else None,
+            "url": url_for("beer_detail", beer_id=r["id"]),
+        })
+    return jsonify({"results": results, "count": len(results)})
+
+
+@app.route("/style-families")
+def style_families():
+    """Сетка 16 семей стилей с иконками, названиями и кол-вом позиций."""
+    db = get_db()
+    cur = db.cursor()
+    families = []
+    for fid in all_family_ids():
+        icon, title, desc = family_meta(fid)
+        row = cur.execute(
+            "SELECT COUNT(*) AS n, COUNT(DISTINCT style) AS s, AVG(abv) AS a "
+            "FROM products_full WHERE style_family = ?",
+            (fid,),
+        ).fetchone()
+        # самый частый стиль в семье
+        top_style_row = cur.execute(
+            "SELECT style FROM products_full WHERE style_family = ? "
+            "AND style IS NOT NULL AND style != '' "
+            "GROUP BY style ORDER BY COUNT(*) DESC LIMIT 1",
+            (fid,),
+        ).fetchone()
+        families.append({
+            "id": fid,
+            "icon": icon,
+            "title": title,
+            "description": desc,
+            "count": row["n"],
+            "styles_count": row["s"],
+            "avg_abv": row["a"],
+            "top_style": top_style_row["style"] if top_style_row else None,
+        })
+    # Сортировка: основные семьи по убыванию кол-ва, 'other' всегда в конце
+    families.sort(key=lambda f: (f["id"] == "other", -f["count"]))
+    return render_template("style_families.html", families=families)
+
+
+@app.route("/style-family/<family>")
+def style_family_detail(family: str):
+    """Страница семьи стилей: описание + конкретные стили + топ позиций/пивоварен."""
+    # Валидация family
+    if family not in all_family_ids():
+        abort(404)
+    icon, title, description = family_meta(family)
+    db = get_db()
+    cur = db.cursor()
+
+    # Статистика семьи
+    stat = cur.execute(
+        "SELECT COUNT(*) AS n, AVG(abv) AS a, MIN(abv) AS mn, MAX(abv) AS mx, "
+        "COUNT(DISTINCT producer) AS producers, "
+        "COUNT(DISTINCT brewery_country) AS countries, "
+        "COUNT(local_image) AS photos "
+        "FROM products_full WHERE style_family = ?",
+        (family,),
+    ).fetchone()
+    avg_price = cur.execute(
+        "SELECT AVG(CAST(REPLACE(REPLACE(price, ' ₽', ''), ' ', '') AS REAL)) AS a "
+        "FROM products_full WHERE style_family = ? AND price LIKE '%₽'",
+        (family,),
+    ).fetchone()["a"]
+    stats = {
+        "count": stat["n"],
+        "avg_abv": stat["a"],
+        "min_abv": stat["mn"],
+        "max_abv": stat["mx"],
+        "producers": stat["producers"],
+        "countries": stat["countries"],
+        "with_photos": stat["photos"],
+        "avg_price_num": avg_price,
+    }
+
+    # Конкретные стили внутри семьи (отсортированы по кол-ву)
+    style_rows = cur.execute(
+        "SELECT style, COUNT(*) AS c FROM products_full "
+        "WHERE style_family = ? AND style IS NOT NULL AND style != '' "
+        "GROUP BY style ORDER BY c DESC",
+        (family,),
+    ).fetchall()
+    styles_list = [
+        {"style": r["style"], "count": r["c"], "slug": slugify(r["style"])}
+        for r in style_rows
+    ]
+
+    # Топ пивоварен в семье
+    top_breweries = cur.execute(
+        "SELECT producer, COUNT(*) AS c FROM products_full "
+        "WHERE style_family = ? AND producer IS NOT NULL AND producer != '' "
+        "GROUP BY producer ORDER BY c DESC LIMIT 12",
+        (family,),
+    ).fetchall()
+    top_breweries = [
+        {"producer": r["producer"], "count": r["c"], "slug": slugify(r["producer"])}
+        for r in top_breweries
+    ]
+
+    # Топ позиций (приоритет с фото)
+    top_beers = cur.execute(
+        "SELECT id, name, producer, style, abv, price, local_image FROM products_full "
+        "WHERE style_family = ? ORDER BY (local_image IS NOT NULL) DESC, RANDOM() LIMIT 12",
+        (family,),
+    ).fetchall()
+
+    return render_template(
+        "style_family_detail.html",
+        family=family,
+        icon=icon,
+        title=title,
+        description=description,
+        stats=stats,
+        styles_list=styles_list,
+        top_breweries=top_breweries,
+        top_beers=top_beers,
     )
 
 
@@ -580,10 +750,14 @@ def catalog():
     filters = {
         "name": (request.args.get("name") or "").strip(),
         "producer": (request.args.get("producer") or "").strip(),
+        "family": (request.args.get("family") or "").strip(),
         "style": (request.args.get("style") or "").strip(),
         "country": (request.args.get("country") or "").strip(),
         "abv_min": (request.args.get("abv_min") or "").strip(),
         "abv_max": (request.args.get("abv_max") or "").strip(),
+        "price_min": (request.args.get("price_min") or "").strip(),
+        "price_max": (request.args.get("price_max") or "").strip(),
+        "with_photo": (request.args.get("with_photo") or "").strip(),
     }
     page = max(int(request.args.get("page", 1)), 1)
     offset = (page - 1) * PAGE_SIZE
@@ -596,6 +770,10 @@ def catalog():
     if filters["producer"]:
         where.append("producer LIKE ?")
         params.append(f"%{filters['producer']}%")
+    # Семья стилей (чипс) — приоритет, фильтрует по style_family
+    if filters["family"] and filters["family"] in all_family_ids():
+        where.append("style_family = ?")
+        params.append(filters["family"])
     if filters["style"]:
         where.append("style = ?")
         params.append(filters["style"])
@@ -614,11 +792,30 @@ def catalog():
             params.append(float(filters["abv_max"]))
         except ValueError:
             pass
+    if filters["price_min"]:
+        # цена в формате "379 ₽" — извлекаем число в подзапросе
+        try:
+            where.append(
+                "CAST(REPLACE(REPLACE(REPLACE(price, ' ₽', ''), ' ', ''), CHAR(160), '') AS REAL) >= ?"
+            )
+            params.append(float(filters["price_min"]))
+        except ValueError:
+            pass
+    if filters["price_max"]:
+        try:
+            where.append(
+                "CAST(REPLACE(REPLACE(REPLACE(price, ' ₽', ''), ' ', ''), CHAR(160), '') AS REAL) <= ?"
+            )
+            params.append(float(filters["price_max"]))
+        except ValueError:
+            pass
+    if filters["with_photo"]:
+        where.append("local_image IS NOT NULL AND local_image != ''")
 
     where_sql = " AND ".join(where)
     beers = db.execute(
-        f"SELECT id, name, producer, style, abv, volume, price, local_image FROM products_full "
-        f"WHERE {where_sql} ORDER BY name LIMIT ? OFFSET ?",
+        f"SELECT id, name, producer, style, style_family, abv, volume, price, local_image "
+        f"FROM products_full WHERE {where_sql} ORDER BY name LIMIT ? OFFSET ?",
         params + [PAGE_SIZE + 1, offset],
     ).fetchall()
     has_more = len(beers) > PAGE_SIZE
@@ -628,13 +825,32 @@ def catalog():
         f"SELECT COUNT(*) AS c FROM products_full WHERE {where_sql}", params
     ).fetchone()
 
-    # Опции для фильтров
-    style_options = [r["style"] for r in db.execute(
-        "SELECT DISTINCT style FROM products_full WHERE style IS NOT NULL AND style != '' ORDER BY style"
-    ).fetchall()]
+    # Опции для фильтров: конкретные стили фильтруем по выбранной семье
+    style_sql = (
+        "SELECT DISTINCT style FROM products_full "
+        "WHERE style IS NOT NULL AND style != ''"
+    )
+    style_params: list = []
+    if filters["family"] and filters["family"] in all_family_ids():
+        style_sql += " AND style_family = ?"
+        style_params.append(filters["family"])
+    style_sql += " ORDER BY style"
+    style_options = [
+        r["style"] for r in db.execute(style_sql, style_params).fetchall()
+    ]
     country_options = [r["brewery_country"] for r in db.execute(
         "SELECT DISTINCT brewery_country FROM products_full WHERE brewery_country IS NOT NULL AND brewery_country != '' ORDER BY brewery_country"
     ).fetchall()]
+
+    # Чипсы семей с кол-вом для UI
+    family_chips = []
+    for fid in all_family_ids():
+        icon, title, _ = family_meta(fid)
+        row = db.execute(
+            "SELECT COUNT(*) AS n FROM products_full WHERE style_family = ?", (fid,)
+        ).fetchone()
+        family_chips.append({"id": fid, "icon": icon, "title": title, "count": row["n"]})
+    family_chips.sort(key=lambda f: (f["id"] == "other", -f["count"]))
 
     next_page_params = {**request.args.to_dict(), "page": page + 1}
 
@@ -645,6 +861,7 @@ def catalog():
         filters=filters,
         style_options=style_options,
         country_options=country_options,
+        family_chips=family_chips,
         page=page,
         page_size=PAGE_SIZE,
         has_more=has_more,

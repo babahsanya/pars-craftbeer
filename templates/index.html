@@ -4,9 +4,17 @@
 {% block content %}
 <div class="hero">
   <h1>🍺 Пивная энциклопедия</h1>
-  <p>Интерактивный справочник крафтового пива, сидра и медовухи. Подробные карточки, фильтры по стилям и пивоварам, обобщения, сравнения и галереи фото.</p>
+  <p>Интерактивный справочник крафтового пива, сидра и медовухи. Введите название — увидите результат сразу.</p>
+
+  <form class="hero-search" id="heroSearchForm" autocomplete="off">
+    <input id="heroSearchInput" type="text" placeholder="🔍 Название, пивовар, стиль, страна..." autocomplete="off" />
+    <div id="heroSearchHint" class="text-muted" style="font-size: 12px; margin-top: 6px;">Начните вводить — результаты появятся здесь</div>
+  </form>
+
+  <div id="heroSearchResults" class="grid" style="margin-top: 20px;"></div>
+
   <div class="hero-stats">
-    <div class="hero-stat"><div class="num">{{ total_beers }}</div><div class="label">позиций в базе</div></div>
+    <div class="hero-stat"><div class="num">{{ total_beers }}</div><div class="label">позиций</div></div>
     <div class="hero-stat"><div class="num">{{ total_styles }}</div><div class="label">стилей</div></div>
     <div class="hero-stat"><div class="num">{{ total_breweries }}</div><div class="label">пивоварен</div></div>
     <div class="hero-stat"><div class="num">{{ total_countries }}</div><div class="label">стран</div></div>
@@ -14,60 +22,66 @@
   </div>
 </div>
 
-<h2 class="section-title">🔥 Популярные стили</h2>
-<div class="grid-tight">
-  {% for s in top_styles %}
-    <a class="stat-card" href="{{ url_for('style_detail', slug=s.slug) }}">
-      <span class="label">{{ s.style }}</span>
-      <span class="num">{{ s.count }}</span>
-      <span class="label">{{ '%.1f' % s.avg_abv if s.avg_abv else '—' }}% ABV среднее</span>
+<h2 class="section-title">🎨 Семьи стилей — быстрый вход</h2>
+<div class="family-chips">
+  {% for f in family_chips %}
+    <a class="fam-chip" href="{{ url_for('style_family_detail', family=f.id) }}">
+      <span class="fc-emoji">{{ f.icon }}</span>
+      <span class="fc-name">{{ f.title }}</span>
+      <span class="fc-n">{{ f.count }}</span>
     </a>
   {% endfor %}
 </div>
 
-<h2 class="section-title">🏭 Топ пивоварен</h2>
-<div class="grid-tight">
-  {% for b in top_breweries %}
-    <a class="stat-card" href="{{ url_for('brewery_detail', slug=b.slug) }}">
-      <span class="label">{{ b.producer }}</span>
-      <span class="num">{{ b.count }}</span>
-      {% if b.country %}<span class="label">{{ b.country }}</span>{% endif %}
-    </a>
-  {% endfor %}
-</div>
+<div id="defaultHomeContent">
+  <h2 class="section-title">🏭 Топ пивоварен</h2>
+  <div class="grid-tight">
+    {% for b in top_breweries %}
+      <a class="stat-card" href="{{ url_for('brewery_detail', slug=b.slug) }}">
+        <span class="label">{{ b.producer }}</span>
+        <span class="num">{{ b.count }}</span>
+        {% if b.country %}<span class="label">{{ b.country }}</span>{% endif %}
+      </a>
+    {% endfor %}
+  </div>
 
-<h2 class="section-title">🌍 Страны</h2>
-<div class="grid-tight">
-  {% for c in top_countries %}
-    <a class="stat-card" href="{{ url_for('country_detail', name=c.country) }}">
-      <span class="label">{{ c.country }}</span>
-      <span class="num">{{ c.count }}</span>
-    </a>
-  {% endfor %}
-</div>
+  <h2 class="section-title">🌍 Страны</h2>
+  <div class="grid-tight">
+    {% for c in top_countries %}
+      <a class="stat-card" href="{{ url_for('country_detail', name=c.country) }}">
+        <span class="label">{{ c.country }}</span>
+        <span class="num">{{ c.count }}</span>
+      </a>
+    {% endfor %}
+  </div>
 
-<h2 class="section-title">🎲 Случайные бутылки</h2>
-<div class="grid">
-  {% for b in random_beers %}
-    <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
-      <div class="card-img">
-        {% if b.local_image %}
-          <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
-        {% else %}
-          <span class="no-img">🍺</span>
-        {% endif %}
-      </div>
-      <div class="card-body">
-        <div class="card-name">{{ b.name }}</div>
-        <div class="card-producer">{{ b.producer or '' }}</div>
-        {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
-        <div class="card-meta">
-          {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
-          {% if b.volume %}<span class="pill">{{ b.volume }} мл</span>{% endif %}
-          {% if b.price %}<span class="pill price">{{ b.price }}</span>{% endif %}
+  <h2 class="section-title">🎲 Случайные бутылки</h2>
+  <div class="grid">
+    {% for b in random_beers %}
+      <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+        <div class="card-img">
+          {% if b.local_image %}
+            <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+          {% else %}
+            <span class="no-img">🍺</span>
+          {% endif %}
         </div>
-      </div>
-    </a>
-  {% endfor %}
+        <div class="card-body">
+          <div class="card-name">{{ b.name }}</div>
+          <div class="card-producer">{{ b.producer or '' }}</div>
+          {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
+          <div class="card-meta">
+            {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
+            {% if b.volume %}<span class="pill">{{ b.volume }} мл</span>{% endif %}
+            {% if b.price %}<span class="pill price">{{ b.price }}</span>{% endif %}
+          </div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/home_search.js') }}"></script>
 {% endblock %}

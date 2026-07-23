@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — семейство стилей{% endblock %}
+
+{% block content %}
+<a class="btn" href="{{ url_for('style_families') }}">← Все семьи</a>
+
+<div class="family-hero" style="margin-top: 16px;">
+  <div class="fh-icon">{{ icon }}</div>
+  <div class="fh-info">
+    <h1>{{ title }}</h1>
+    <p class="text-muted">{{ description }}</p>
+    <div class="fh-stats">
+      <span><strong>{{ stats.count }}</strong> позиций</span>
+      <span><strong>{{ styles_list|length }}</strong> стилей</span>
+      <span><strong>{{ stats.producers }}</strong> пивоварен</span>
+      <span><strong>{{ stats.countries }}</strong> стран</span>
+    </div>
+  </div>
+</div>
+
+<div class="style-stats">
+  {% if stats.avg_abv %}<div class="kv"><div class="kv-label">Среднее ABV</div><div class="kv-value">{{ '%.1f'|format(stats.avg_abv) }}%</div></div>{% endif %}
+  {% if stats.min_abv is not none %}<div class="kv"><div class="kv-label">ABV диапазон</div><div class="kv-value">{{ stats.min_abv }}–{{ stats.max_abv }}%</div></div>{% endif %}
+  {% if stats.avg_price_num %}<div class="kv"><div class="kv-label">Средняя цена</div><div class="kv-value">{{ stats.avg_price_num|round(0)|int }} ₽</div></div>{% endif %}
+  {% if stats.with_photos %}<div class="kv"><div class="kv-label">С фото</div><div class="kv-value">{{ stats.with_photos }}</div></div>{% endif %}
+</div>
+
+<h2 class="section-title">🏷 Конкретные стили в семье ({{ styles_list|length }})</h2>
+<div class="style-tags">
+  {% for s in styles_list %}
+    <a class="style-tag" href="{{ url_for('style_detail', slug=s.slug) }}">
+      {{ s.style }}
+      <span class="style-tag-count">{{ s.count }}</span>
+    </a>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">🏭 Топ пивоварен</h2>
+<div class="grid-tight">
+  {% for b in top_breweries %}
+    <a class="stat-card" href="{{ url_for('brewery_detail', slug=b.slug) }}">
+      <span class="label">{{ b.producer }}</span>
+      <span class="num">{{ b.count }}</span>
+    </a>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">🍺 Топ позиций</h2>
+<div class="grid">
+  {% for b in top_beers %}
+    <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+      <div class="card-img">
+        {% if b.local_image %}
+          <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+        {% else %}
+          <span class="no-img">🍺</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="card-name">{{ b.name }}</div>
+        <div class="card-producer">{{ b.producer or '' }}</div>
+        {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
+        <div class="card-meta">
+          {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
+          {% if b.price %}<span class="pill price">{{ b.price }}</span>{% endif %}
+        </div>
+      </div>
+    </a>
+  {% endfor %}
+</div>
+
+<div style="margin-top: 20px;">
+  <a class="btn btn-primary" href="{{ url_for('catalog', family=family) }}">Все {{ stats.count }} позиций в каталоге →</a>
+</div>
+{% endblock %}

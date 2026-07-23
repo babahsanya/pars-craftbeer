@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Семьи стилей — Пивная энциклопедия{% endblock %}
+
+{% block content %}
+<h1 class="page-title">🎨 Семьи стилей</h1>
+<div class="page-subtitle">{{ families|length }} групп · ~95% позиций классифицированы автоматически</div>
+
+<div class="grid">
+  {% for f in families %}
+    <a class="family-card" href="{{ url_for('style_family_detail', family=f.id) }}">
+      <div class="fc-icon">{{ f.icon }}</div>
+      <div class="fc-body">
+        <div class="fc-title">{{ f.title }}</div>
+        <div class="fc-count">{{ f.count }} позиций</div>
+        <div class="fc-meta">
+          {% if f.styles_count %}{{ f.styles_count }} стилей{% endif %}
+          {% if f.avg_abv %} · {{ '%.1f'|format(f.avg_abv) }}% ABV{% endif %}
+        </div>
+      </div>
+    </a>
+  {% endfor %}
+</div>
+
+<div class="panel" style="margin-top: 28px;">
+  <h3>ℹ️ Как работает классификация</h3>
+  <p style="line-height: 1.6;">
+    Все ~590 уникальных стилей в базе (на смеси русского и английского) автоматически
+    отнесены к 15 семьям по keyword-правилам. Это решает проблему дублирования:
+    «IPA - American» и «Американский ИПА» попадают в одну семью
+    <a href="{{ url_for('style_family_detail', family='ipa') }}">IPA</a>.
+    Кликните на семью, чтобы увидеть все её конкретные стили, топ пивоварен и позиции.
+  </p>
+</div>
+{% endblock %}
