@@ -47,6 +47,7 @@ from style_families import (
     family_meta,
     family_title,
 )
+import search_engine
 
 APP_ROOT = Path(__file__).resolve().parent
 DB_PATH = APP_ROOT / "beer_database.db"
@@ -266,20 +267,21 @@ def index():
 def search():
     q = (request.args.get("q") or "").strip()
     results = []
+    correction = None
+    candidates = []
     if q and len(q) >= 2:
         db = get_db()
-        cur = db.cursor()
-        like = f"%{q}%"
-        cur.execute(
-            "SELECT id, name, producer, style, abv, volume, local_image "
-            "FROM products_full "
-            "WHERE name LIKE ? OR producer LIKE ? OR style LIKE ? "
-            "OR brewery_country LIKE ? OR substyle LIKE ? "
-            "ORDER BY CASE WHEN name LIKE ? THEN 0 ELSE 1 END, name LIMIT 60",
-            (like, like, like, like, like, like),
-        )
-        results = cur.fetchall()
-    return render_template("search.html", q=q, results=results)
+        res = search_engine.search(q, db, limit=60)
+        results = res["results"]
+        correction = res.get("correction")
+        candidates = res.get("candidates", [])
+    return render_template(
+        "search.html",
+        q=q,
+        results=results,
+        correction=correction,
+        candidates=candidates,
+    )
 
 
 @app.route("/api/suggest")
@@ -288,25 +290,28 @@ def api_suggest():
     if len(q) < 2:
         return []
     db = get_db()
-    like = f"%{q}%"
-    rows = db.execute(
-        "SELECT id, name, producer, style, abv, local_image "
-        "FROM products_full "
-        "WHERE name LIKE ? OR producer LIKE ? OR style LIKE ? "
-        "ORDER BY CASE WHEN name LIKE ? THEN 0 ELSE 1 END, name LIMIT ?",
-        (like, like, like, like, MAX_SUGGEST),
-    ).fetchall()
-    return [
-        {
-            "id": r["id"],
-            "name": r["name"],
-            "producer": r["producer"],
-            "style": r["style"],
-            "abv": r["abv"],
-            "local_image": static_url(r["local_image"]) if r["local_image"] else None,
-        }
-        for r in rows
-    ]
+    res = search_engine.search(q, db, limit=MAX_SUGGEST)
+    out = []
+    for item in res["results"]:
+        out.append({
+            "id": item["id"],
+            "name": item["name"],
+            "producer": item["producer"],
+            "style": item["style"],
+            "abv": item["abv"],
+            "local_image": None,  # заполним ниже через static_url
+            "score": item["score"],
+        })
+        # подтягиваем local_image для превью
+        if item["image"] is None:
+            row = db.execute(
+                "SELECT local_image FROM products_full WHERE id = ?", (item["id"],)
+            ).fetchone()
+            if row and row["local_image"]:
+                out[-1]["local_image"] = static_url(row["local_image"])
+    # Подсказка «может вы имели в виду»
+    correction = res.get("correction")
+    return {"suggestions": out, "correction": correction}
 
 
 @app.route("/beer/<int:beer_id>")
@@ -360,32 +365,37 @@ def api_search():
     """
     q = (request.args.get("q") or "").strip()
     if len(q) < 2:
-        return jsonify({"results": []})
+        return jsonify({"results": [], "count": 0, "correction": None})
     db = get_db()
-    like = f"%{q}%"
-    rows = db.execute(
-        "SELECT id, name, producer, style, style_family, abv, volume, price, "
-        "local_image, original_url FROM products_full "
-        "WHERE name LIKE ? OR producer LIKE ? OR style LIKE ? "
-        "OR brewery_country LIKE ? OR substyle LIKE ? "
-        "ORDER BY CASE WHEN name LIKE ? THEN 0 ELSE 1 END, name LIMIT 24",
-        (like, like, like, like, like, like),
-    ).fetchall()
+    res = search_engine.search(q, db, limit=24)
     results = []
-    for r in rows:
+    for item in res["results"]:
+        # подтягиваем local_image (search_engine его не заполняет)
+        img = item.get("image")
+        if img is None:
+            row = db.execute(
+                "SELECT local_image FROM products_full WHERE id = ?", (item["id"],)
+            ).fetchone()
+            img = static_url(row["local_image"]) if row and row["local_image"] else None
         results.append({
-            "id": r["id"],
-            "name": r["name"],
-            "producer": r["producer"],
-            "style": r["style"],
-            "style_family": r["style_family"],
-            "abv": r["abv"],
-            "volume": r["volume"],
-            "price": r["price"],
-            "image": static_url(r["local_image"]) if r["local_image"] else None,
-            "url": url_for("beer_detail", beer_id=r["id"]),
+            "id": item["id"],
+            "name": item["name"],
+            "producer": item["producer"],
+            "style": item["style"],
+            "style_family": item["style_family"],
+            "abv": item["abv"],
+            "volume": item["volume"],
+            "price": item["price"],
+            "image": img,
+            "url": url_for("beer_detail", beer_id=item["id"]),
+            "score": item["score"],
         })
-    return jsonify({"results": results, "count": len(results)})
+    return jsonify({
+        "results": results,
+        "count": res["count"],
+        "correction": res.get("correction"),
+        "candidates": res.get("candidates", []),
+    })
 
 
 @app.route("/style-families")

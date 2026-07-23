@@ -3,6 +3,26 @@
 
 {% block content %}
 <h1 class="page-title">🔍 Поиск: «{{ q }}»</h1>
+
+{% if candidates|length > 1 %}
+<div class="search-candidates">
+  <span class="text-muted">Искали также по вариантам:</span>
+  {% for c in candidates %}
+    <code>{{ c }}</code>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if correction %}
+<div class="correction-block">
+  <span class="corr-icon">💡</span>
+  <span class="corr-text">
+    Возможно, вы имели в виду:
+    <a href="{{ url_for('search', q=correction) }}"><strong>{{ correction }}</strong></a>?
+  </span>
+</div>
+{% endif %}
+
 <div class="page-subtitle">Найдено {{ results|length }} позиций</div>
 
 {% if results %}
@@ -12,6 +32,8 @@
         <div class="card-img">
           {% if b.local_image %}
             <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+          {% elif b.image %}
+            <img src="{{ b.image }}" alt="{{ b.name }}" loading="lazy">
           {% else %}
             <span class="no-img">🍺</span>
           {% endif %}
@@ -31,7 +53,13 @@
 {% else %}
   <div class="empty-state">
     <div class="big">🔍</div>
-    <p>Ничего не найдено. Попробуйте изменить запрос.</p>
+    <p>Ничего не найдено. Попробуйте изменить запрос или проверить раскладку.</p>
+    {% if correction %}
+    <p style="margin-top: 12px;">
+      Возможно, вы имели в виду:
+      <a class="btn btn-primary" href="{{ url_for('search', q=correction) }}">{{ correction }}</a>
+    </p>
+    {% endif %}
   </div>
 {% endif %}
 {% endblock %}

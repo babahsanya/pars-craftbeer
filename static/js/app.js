@@ -7,29 +7,40 @@
   let timer = null;
   let lastQuery = "";
 
-  function render(items) {
-    if (!items || items.length === 0) {
+  function render(items, correction) {
+    if ((!items || items.length === 0) && !correction) {
       box.hidden = true;
       box.innerHTML = "";
       return;
     }
-    box.innerHTML = items
-      .map((it) => {
-        const img = it.local_image
-          ? `<img src="${it.local_image}" alt="">`
-          : `<img src="" alt="" style="opacity:0">`;
-        const meta = [it.producer, it.style, it.abv ? it.abv + "% ABV" : ""]
-          .filter(Boolean)
-          .join(" · ");
-        return `<a class="suggest-item" href="/beer/${it.id}">
-          ${img}
-          <div class="si-main">
-            <div class="si-name">${escapeHtml(it.name)}</div>
-            <div class="si-meta">${escapeHtml(meta)}</div>
-          </div>
-        </a>`;
-      })
-      .join("");
+    let html = "";
+    // Блок «может вы имели в виду» сверху подсказок
+    if (correction) {
+      html +=
+        `<a class="suggest-item suggest-correction" href="/search?q=${encodeURIComponent(correction)}">` +
+        `<div class="si-main"><div class="si-name">💡 ${escapeHtml(correction)}</div>` +
+        `<div class="si-meta">возможно, вы имели в виду</div></div></a>`;
+    }
+    if (items && items.length > 0) {
+      html += items
+        .map((it) => {
+          const img = it.local_image
+            ? `<img src="${it.local_image}" alt="">`
+            : `<img src="" alt="" style="opacity:0">`;
+          const meta = [it.producer, it.style, it.abv ? it.abv + "% ABV" : ""]
+            .filter(Boolean)
+            .join(" · ");
+          return `<a class="suggest-item" href="/beer/${it.id}">
+            ${img}
+            <div class="si-main">
+              <div class="si-name">${escapeHtml(it.name)}</div>
+              <div class="si-meta">${escapeHtml(meta)}</div>
+            </div>
+          </a>`;
+        })
+        .join("");
+    }
+    box.innerHTML = html;
     box.hidden = false;
   }
 
@@ -51,7 +62,15 @@
     timer = setTimeout(() => {
       fetch("/api/suggest?q=" + encodeURIComponent(q))
         .then((r) => r.json())
-        .then(render)
+        .then((data) => {
+          // Новый формат: {suggestions: [...], correction: str|null}
+          // Старый формат (массив) — для совместимости
+          if (Array.isArray(data)) {
+            render(data, null);
+          } else {
+            render(data.suggestions || [], data.correction || null);
+          }
+        })
         .catch(() => {
           box.hidden = true;
         });

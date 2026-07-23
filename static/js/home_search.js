@@ -40,10 +40,32 @@
 
   function showResults(data) {
     if (!data.results || data.results.length === 0) {
-      resultsBox.innerHTML = `<div class="empty-state"><div class="big">🔍</div><p>Ничего не найдено</p></div>`;
+      // Если есть подсказка «может вы имели в виду» — покажем её
+      if (data.correction) {
+        resultsBox.innerHTML =
+          `<div class="empty-state">` +
+          `<div class="big">🔍</div>` +
+          `<p>Ничего не найдено.</p>` +
+          `<p style="margin-top: 12px;">Возможно, вы имели в виду:` +
+          `<a class="btn btn-primary" style="margin-left:8px;" href="/search?q=${encodeURIComponent(data.correction)}">${escapeHtml(data.correction)}</a></p>` +
+          `</div>`;
+      } else {
+        resultsBox.innerHTML = `<div class="empty-state"><div class="big">🔍</div><p>Ничего не найдено</p></div>`;
+      }
       return;
     }
-    resultsBox.innerHTML = data.results.map(renderCard).join("");
+    let html = "";
+    // Блок «может вы имели в виду» сверху результатов
+    if (data.correction) {
+      html +=
+        `<div class="correction-block" style="grid-column: 1 / -1;">` +
+        `<span class="corr-icon">💡</span>` +
+        `<span class="corr-text">Возможно, вы имели в виду: ` +
+        `<a href="/search?q=${encodeURIComponent(data.correction)}"><strong>${escapeHtml(data.correction)}</strong></a>?</span>` +
+        `</div>`;
+    }
+    html += data.results.map(renderCard).join("");
+    resultsBox.innerHTML = html;
   }
 
   function resetToDefault() {
