@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Статус обновления{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="15">{% endblock %}
+
+{% block content %}
+<div class="page-title">📡 Статус обновления базы</div>
+<div class="page-subtitle">Автообновление каждые 15 секунд · Источник: <code>parse_progress</code></div>
+
+<div class="style-hero" style="margin-bottom: 24px;">
+  <div class="bjcp">{{ status_label }}</div>
+  <h1>{{ total_done }} / {{ total_target }}</h1>
+  <p style="color: var(--muted); margin: 4px 0 0;">
+    Обработано позиций из {{ total_target }} в базе
+    {% if eta_text %} · осталось ~{{ eta_text }}{% endif %}
+  </p>
+  <div class="abv-bar" style="height: 32px; margin-top: 16px;">
+    <div class="range" style="left: 0; width: {{ pct }}%; background: linear-gradient(90deg, var(--accent), var(--good)); border-radius: 6px; border: 0;"></div>
+    <div class="scale" style="font-size: 13px; font-weight: 600; color: #0b1220;">
+      <span style="padding-left: 8px;">{{ '%.1f'|format(pct) }}%</span>
+    </div>
+  </div>
+</div>
+
+<div class="style-stats">
+  <div class="kv"><div class="kv-label">✅ Успешно</div><div class="kv-value" style="color: var(--good)">{{ ok }}</div></div>
+  <div class="kv"><div class="kv-label">❌ Ошибок</div><div class="kv-value" style="color: var(--bad)">{{ errors }}</div></div>
+  <div class="kv"><div class="kv-label">⏳ Осталось</div><div class="kv-value">{{ remaining }}</div></div>
+  <div class="kv"><div class="kv-label">📊 Успешность</div><div class="kv-value">{{ '%.1f'|format(success_rate) }}%</div></div>
+</div>
+
+{% if error_breakdown %}
+<h2 class="section-title">🔍 Детализация ошибок</h2>
+<div class="page-subtitle">Классификация позволяет понять, какие ошибки временные (перепроверить), а какие постоянные (страница удалена).</div>
+<div class="grid-tight">
+  {% for e in error_breakdown %}
+    <div class="stat-card">
+      <span class="label">{{ e.icon }} {{ e.title }}</span>
+      <span class="num">{{ e.count }}</span>
+      <span class="label">{{ e.hint }}</span>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-title">📈 Наполненность данных в реальном времени</h2>
+<div class="page-subtitle">Процент позиций с заполненным полем. Растёт по мере парсинга.</div>
+<div class="grid">
+  {% for f in fillness %}
+    <div class="stat-card">
+      <span class="label">{{ f.label }}</span>
+      <span class="num">{{ f.count }}/{{ f.total }}</span>
+      <div class="abv-bar" style="height: 8px; margin-top: 6px;">
+        <div class="range" style="left: 0; width: {{ f.pct }}%; background: var(--accent); border: 0; border-radius: 4px;"></div>
+      </div>
+      <span class="label">{{ '%.1f'|format(f.pct) }}%</span>
+    </div>
+  {% endfor %}
+</div>
+
+<h2 class="section-title">🕐 Хронология</h2>
+<div class="style-stats">
+  <div class="kv"><div class="kv-label">Первая запись</div><div class="kv-value" style="font-size: 13px;">{{ first_seen or '—' }}</div></div>
+  <div class="kv"><div class="kv-label">Последняя запись</div><div class="kv-value" style="font-size: 13px;">{{ last_seen or '—' }}</div></div>
+  <div class="kv"><div class="kv-label">Кеш картинок</div><div class="kv-value">{{ with_photos }}/{{ total_target }}</div></div>
+  <div class="kv"><div class="kv-label">Стили BJCP</div><div class="kv-value">{{ styles_in_guide }}</div></div>
+</div>
+
+<div class="panel" style="margin-top: 20px;">
+  <h3>ℹ️ Как это работает</h3>
+  <p style="line-height: 1.7;">
+    Парсер <code>craftbeer_global_parser.py --refresh</code> читает каждую страницу на craftbeer78.ru и
+    обновляет запись в <code>products_full</code> через JSON-LD <code>additionalProperty</code>
+    (стиль, ABV, IBU, состав, плотность). Каждая позиция помечается в <code>parse_progress</code>
+    как <code>ok</code> или <code>parse_error</code>. Эта страница читает прогресс напрямую из базы —
+    поэтому данные здесь всегда свежие (обновляется каждые 15 сек автоматически).
+    <br><br>
+    <strong>Картинки</strong> скачиваются отдельно командой <code>python image_cache.py</code>
+    (запускается после завершения парсера). Карточки пива показывают фото сразу после скачивания.
+    <br><br>
+    <strong>Живое обновление веба:</strong> Flask открывает новое соединение с SQLite при каждом запросе
+    и использует WAL-режим — поэтому карточки пива показывают свежие данные без перезапуска сервера,
+    даже пока парсер пишет в базу. Просто обнови страницу (Ctrl+F5 если браузер кеширует).
+  </p>
+</div>
+{% endblock %}

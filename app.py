@@ -697,6 +697,142 @@ def top():
     )
 
 
+@app.route("/status")
+def status():
+    """Дашборд прогресса парсинга в реальном времени."""
+    db = get_db()
+    cur = db.cursor()
+
+    # Цель — все позиции в products_full
+    total_target = cur.execute("SELECT COUNT(*) FROM products_full").fetchone()[0]
+
+    # Прогресс из parse_progress
+    rows = cur.execute(
+        "SELECT status, COUNT(*) AS c FROM parse_progress GROUP BY status"
+    ).fetchall()
+    progress = {r["status"]: r["c"] for r in rows}
+    ok = progress.get("ok", 0)
+    errors = sum(v for k, v in progress.items() if k != "ok")
+    total_done = ok + errors
+    remaining = max(total_target - total_done, 0)
+    pct = (total_done / total_target * 100) if total_target else 0
+    success_rate = (ok / total_done * 100) if total_done else 0
+
+    # Детализация ошибок по классам (только если есть ошибки)
+    error_meta = {
+        "error_network":   ("📡", "Сетевой сбой",     "обрыв/таймаут — перепроверить"),
+        "error_blocked":   ("🚫", "Блокировка",       "403/429 — пауза и повтор"),
+        "error_server":    ("🔧", "Ошибка сервера",    "5xx — временно, перепроверить"),
+        "error_permanent": ("🗑️", "Удалена 404",      "страницы нет — пропустить"),
+        "parse_error":     ("⚠️", "Старый формат",     "до классификации, перепроверить"),
+        "save_error":      ("💾", "Ошибка БД",         "проблема записи, перепроверить"),
+    }
+    error_breakdown = []
+    for status, count in sorted(progress.items()):
+        if status == "ok" or count == 0:
+            continue
+        icon, title, hint = error_meta.get(status, ("❓", status, ""))
+        error_breakdown.append({
+            "status": status,
+            "icon": icon,
+            "title": title,
+            "count": count,
+            "hint": hint,
+        })
+
+    # Хронология (первая/последняя запись в parse_progress)
+    chrono = cur.execute(
+        "SELECT MIN(updated_at) AS mn, MAX(updated_at) AS mx FROM parse_progress"
+    ).fetchone()
+    first_seen = chrono["mn"] if chrono else None
+    last_seen = chrono["mx"] if chrono else None
+
+    # ETA: берём скорость по последним ~50 записям
+    eta_text = ""
+    try:
+        recent = cur.execute(
+            "SELECT updated_at FROM parse_progress ORDER BY updated_at DESC LIMIT 50"
+        ).fetchall()
+        if len(recent) >= 10:
+            from datetime import datetime
+            times = [datetime.fromisoformat(r["updated_at"].replace(" ", "T")) for r in recent if r["updated_at"]]
+            if times:
+                span = (max(times) - min(times)).total_seconds()
+                speed = len(times) / span if span > 0 else 0
+                if speed > 0:
+                    eta_sec = remaining / speed
+                    if eta_sec >= 3600:
+                        eta_text = f"{int(eta_sec // 3600)} ч {int((eta_sec % 3600) // 60)} мин"
+                    elif eta_sec >= 60:
+                        eta_text = f"{int(eta_sec // 60)} мин"
+                    else:
+                        eta_text = f"{int(eta_sec)} сек"
+    except Exception:
+        pass
+
+    # Наполненность по ключевым полям (живые данные)
+    fields_map = [
+        ("name", "Название"),
+        ("style", "Стиль"),
+        ("abv", "Крепость"),
+        ("ibu", "IBU"),
+        ("description", "Описание"),
+        ("ingredients", "Состав"),
+        ("og_value", "Плотность OG"),
+        ("barcode", "Штрихкод"),
+        ("price", "Цена"),
+        ("color", "Цвет"),
+        ("local_image", "Кеш фото"),
+    ]
+    fillness = []
+    for field, label in fields_map:
+        n = cur.execute(
+            f"SELECT COUNT(*) FROM products_full WHERE {field} IS NOT NULL AND CAST({field} AS TEXT) != ''"
+        ).fetchone()[0]
+        fillness.append({
+            "field": field,
+            "label": label,
+            "count": n,
+            "total": total_target,
+            "pct": (n / total_target * 100) if total_target else 0,
+        })
+
+    # Доп. метрики
+    with_photos = cur.execute(
+        "SELECT COUNT(*) FROM products_full WHERE local_image IS NOT NULL AND local_image != ''"
+    ).fetchone()[0]
+    styles_in_guide = cur.execute("SELECT COUNT(*) FROM beer_styles").fetchone()[0]
+
+    # Статус-метка
+    if total_done == 0:
+        status_label = "⚪ Парсинг ещё не запускался"
+    elif remaining == 0 and errors == 0:
+        status_label = "🎉 Полностью завершено"
+    elif remaining == 0:
+        status_label = f"⚠️ Завершено с ошибками ({errors} — перепроверить через --failed-only)"
+    else:
+        status_label = "🔄 Парсинг идёт"
+
+    return render_template(
+        "status.html",
+        total_target=total_target,
+        total_done=total_done,
+        ok=ok,
+        errors=errors,
+        remaining=remaining,
+        pct=pct,
+        success_rate=success_rate,
+        first_seen=first_seen,
+        last_seen=last_seen,
+        eta_text=eta_text,
+        fillness=fillness,
+        with_photos=with_photos,
+        styles_in_guide=styles_in_guide,
+        status_label=status_label,
+        error_breakdown=error_breakdown,
+    )
+
+
 @app.route("/compare")
 def compare():
     db = get_db()

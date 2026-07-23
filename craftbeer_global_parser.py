@@ -54,6 +54,7 @@ class CraftBeerGlobalParser:
 
         # Задержки (сек)
         self.request_delay = 0.4
+        self.base_request_delay = 0.4  # исходная, для адаптивного замедления
         self.discovery_delay = 0.2
         self.page_delay = 0.2
 
@@ -61,12 +62,31 @@ class CraftBeerGlobalParser:
         self.processed_urls = set()
         self.failed_urls = set()
 
+        # --- Состояние надёжности ---
+        # Флаг аккуратного завершения (ставится signal handler при Ctrl+C).
+        # Главный цикл проверяет его между URL — позволяет закончить текущий запрос.
+        self.shutdown_requested = False
+        # Circuit breaker: счётчик подряд идущих ошибок.
+        # При достижении threshold делаем паузу и проверяем живость сайта.
+        self.consecutive_errors = 0
+        self.circuit_threshold = 10
+        # Лимит per-URL попыток при сетевых сбоях (не путать с urllib3 retries).
+        self.url_max_retries = 3
+        # Паузы между per-URL попытками (в секундах): 5, 15, 30
+        self.url_retry_delays = (5, 15, 30)
+        # Пауза circuit breaker при массовых сбоях (сек)
+        self.circuit_pause = 60
+        # Пауза при явной блокировке (429/503) (сек)
+        self.block_pause = 120
+
         self.stats = {
             "total_discovered": 0,
             "total_processed": 0,
             "successful_parses": 0,
             "failed_parses": 0,
             "database_updates": 0,
+            "retries_used": 0,
+            "circuit_pauses": 0,
         }
 
     def _normalize_url(self, url):
@@ -75,6 +95,131 @@ class CraftBeerGlobalParser:
         if normalized.endswith("/"):
             normalized = normalized.rstrip("/")
         return normalized
+
+    # ------------------------------------------------------------------
+    # Надёжный HTTP-запрос: retry на сетевые сбои + circuit breaker.
+    # ------------------------------------------------------------------
+    def _fetch_with_retry(self, url):
+        """Запрашивает URL с per-URL retry и circuit breaker.
+
+        Возвращает кортеж (response | None, error_class) где error_class:
+          - None          — успех, response валидный (raise_for_status уже сделан)
+          - 'permanent'   — 404/410, страница удалена (повторять бессмысленно)
+          - 'blocked'     — 403/429, блокировка/лимит (требуется пауза)
+          - 'server'      — 5xx от сервера (временная, повторяем)
+          - 'network'     — таймаут/обрыв связи (повторяем)
+          - 'shutdown'    — запрошен выход через Ctrl+C
+        """
+        last_error = None
+        for attempt in range(self.url_max_retries):
+            # Проверяем shutdown между попытками
+            if self.shutdown_requested:
+                return None, "shutdown"
+
+            try:
+                resp = self.session.get(url, timeout=15)
+
+                # 200 OK — успех
+                if resp.status_code == 200:
+                    self.consecutive_errors = 0
+                    # Возвращаемся к нормальной скорости после замедления
+                    self.request_delay = self.base_request_delay
+                    return resp, None
+
+                # Классификация HTTP-ошибок
+                if resp.status_code in (404, 410):
+                    last_error = "permanent"
+                    break  # повторять бессмысленно — выходим сразу
+                elif resp.status_code in (403, 429):
+                    last_error = "blocked"
+                    # Замедляемся при блокировке
+                    self._throttle()
+                elif 500 <= resp.status_code < 600:
+                    last_error = "server"
+                else:
+                    last_error = "server"
+
+                logging.warning(
+                    f"   ⚠ HTTP {resp.status_code} (попытка {attempt+1}/{self.url_max_retries})"
+                )
+
+            except requests.exceptions.Timeout:
+                last_error = "network"
+                logging.warning(
+                    f"   ⚠ Таймаут (попытка {attempt+1}/{self.url_max_retries})"
+                )
+            except (
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ChunkedEncodingError,
+            ) as e:
+                last_error = "network"
+                logging.warning(
+                    f"   ⚠ Обрыв связи: {type(e).__name__} (попытка {attempt+1}/{self.url_max_retries})"
+                )
+            except requests.exceptions.RequestException as e:
+                last_error = "network"
+                logging.warning(
+                    f"   ⚠ Сетевая ошибка: {type(e).__name__} (попытка {attempt+1}/{self.url_max_retries})"
+                )
+
+            # Пауза перед следующей попыткой (кроме последней и permanent)
+            if attempt < self.url_max_retries - 1 and last_error != "permanent":
+                delay = self.url_retry_delays[
+                    min(attempt, len(self.url_retry_delays) - 1)
+                ]
+                logging.info(f"   ⏳ Повтор через {delay} сек...")
+                for _ in range(delay):
+                    if self.shutdown_requested:
+                        return None, "shutdown"
+                    time.sleep(1)
+                self.stats["retries_used"] += 1
+
+        # Все попытки исчерпаны
+        self._register_error()
+        return None, last_error or "network"
+
+    def _throttle(self):
+        """Замедляет запросы при признаках блокировки (429/403)."""
+        new_delay = min(self.request_delay * 2, 3.0)
+        if new_delay != self.request_delay:
+            logging.info(
+                f"   🐌 Замедление: задержка {self.request_delay} → {new_delay} сек"
+            )
+            self.request_delay = new_delay
+
+    def _register_error(self):
+        """Регистрирует ошибку в circuit breaker. При пороге — пауза."""
+        self.consecutive_errors += 1
+        if self.consecutive_errors >= self.circuit_threshold:
+            self._trigger_circuit_breaker()
+
+    def _trigger_circuit_breaker(self):
+        """Массовые ошибки подряд — сайт скорее всего лежит. Пауза + проверка."""
+        self.stats["circuit_pauses"] += 1
+        logging.warning(
+            f"   🛑 Circuit breaker: {self.consecutive_errors} ошибок подряд. "
+            f"Сайт кажется недоступным — пауза {self.circuit_pause} сек."
+        )
+        # Паузим с возможностью раннего выхода по shutdown
+        for i in range(self.circuit_pause):
+            if self.shutdown_requested:
+                return
+            time.sleep(1)
+        # Проверяем живость: пробуем базовый URL
+        try:
+            r = self.session.get(self.base_url, timeout=10)
+            if r.status_code == 200:
+                logging.info("   ✅ Сайт снова отвечает. Продолжаем.")
+                self.consecutive_errors = 0
+                self.request_delay = self.base_request_delay
+            else:
+                logging.warning(
+                    f"   ⚠ Сайт отвечает {r.status_code}. Продолжаем с осторожностью."
+                )
+        except Exception:
+            logging.error(
+                f"   ❌ Сайт всё ещё недоступен. Продолжаем, но ошибки вероятны."
+            )
 
     def create_enhanced_database(self):
         """Создаем улучшенную структуру базы данных"""
@@ -490,8 +635,35 @@ class CraftBeerGlobalParser:
             url = self._normalize_url(url)
             logging.info(f"🔍 Парсим: {url}")
 
-            response = self.session.get(url, timeout=15)
-            response.raise_for_status()
+            # Надёжный запрос с retry на сетевые сбои + circuit breaker.
+            # Возвращает (response, error_class) — None во втором значит успех.
+            response, error_class = self._fetch_with_retry(url)
+
+            # Различаем типы неудач
+            if error_class == "shutdown":
+                logging.info("   🛑 Выход по запросу пользователя (Ctrl+C)")
+                return {
+                    "original_url": url,
+                    "url_hash": hashlib.md5(url.encode()).hexdigest(),
+                    "parse_date": datetime.now().isoformat(),
+                    "parse_success": 0,
+                    "parse_attempts": 1,
+                    "_error_class": "shutdown",
+                }
+            if response is None:
+                # Все попытки исчерпаны — записываем класс ошибки для прогресса
+                logging.error(
+                    f"❌ Не удалось получить {url} после {self.url_max_retries} попыток "
+                    f"(тип: {error_class})"
+                )
+                return {
+                    "original_url": url,
+                    "url_hash": hashlib.md5(url.encode()).hexdigest(),
+                    "parse_date": datetime.now().isoformat(),
+                    "parse_success": 0,
+                    "parse_attempts": 1,
+                    "_error_class": error_class,
+                }
 
             soup = BeautifulSoup(response.text, "html.parser")
 
@@ -1352,11 +1524,16 @@ class CraftBeerGlobalParser:
             conn.close()
 
     def _load_failed_urls(self) -> list:
-        """URL с ошибками — для режима --failed-only."""
+        """URL с ошибками — для режима --failed-only.
+
+        Permanent-ошибки (error_permanent = 404/410, удалённые страницы)
+        по умолчанию исключаются — их перепроверка бессмысленна.
+        """
         conn = sqlite3.connect("beer_database.db")
         try:
             cur = conn.execute(
-                "SELECT DISTINCT url FROM parse_progress WHERE status != 'ok'"
+                "SELECT DISTINCT url FROM parse_progress "
+                "WHERE status != 'ok' AND status != 'error_permanent'"
             )
             return [row[0] for row in cur.fetchall()]
         finally:
@@ -1439,10 +1616,21 @@ class CraftBeerGlobalParser:
             return self.stats
 
         for i, url in enumerate(urls, 1):
+            # Проверяем запрос на завершение между URL
+            if self.shutdown_requested:
+                logging.info("\n🛑 Получен сигнал завершения. Аккуратный выход.")
+                logging.info(
+                    f"   Прогресс сохранён: {self.stats['total_processed']}/{len(urls)} обработано."
+                )
+                logging.info("   Повторный запуск продолжит с этого места (resume).")
+                break
+
             logging.info(f"\n📦 {i}/{len(urls)}: {url}")
 
             product_data = self.parse_product_comprehensive(url)
             ok = bool(product_data.get("parse_success"))
+            # Класс ошибки из _fetch_with_retry (network/blocked/server/permanent/shutdown)
+            error_class = product_data.get("_error_class")
 
             if ok:
                 if self.save_to_database(product_data):
@@ -1463,12 +1651,19 @@ class CraftBeerGlobalParser:
                 else:
                     self.stats["failed_parses"] += 1
                     self._mark_progress(url, "save_error")
-                    logging.error("   ❌ Ошибка сохранения")
+                    logging.error("   ❌ Ошибка сохранения в БД")
             else:
+                # Выход по Ctrl+C — не помечаем как ошибку, просто выходим
+                if error_class == "shutdown":
+                    break
                 self.stats["failed_parses"] += 1
-                self._mark_progress(url, "parse_error")
+                # Классифицированный статус для parse_progress
+                status = f"error_{error_class}" if error_class else "parse_error"
+                self._mark_progress(url, status)
                 self.failed_urls.add(url)
-                logging.error("   ❌ Парсинг неудачен")
+                logging.error(
+                    f"   ❌ Парсинг неудачен (статус: {status})"
+                )
 
             self.processed_urls.add(url)
             self.stats["total_processed"] += 1
@@ -1492,11 +1687,24 @@ class CraftBeerGlobalParser:
                     f"   Успешно: {self.stats['successful_parses']} ({success_rate:.1f}%)"
                 )
                 logging.info(f"   Ошибок: {self.stats['failed_parses']}")
+                logging.info(
+                    f"   Retry использовано: {self.stats['retries_used']}, "
+                    f"пауз circuit breaker: {self.stats['circuit_pauses']}"
+                )
                 logging.info(f"   Время: {elapsed}")
                 if eta_sec > 0:
                     logging.info(
                         f"   ETA: ~{int(eta_sec // 60)} мин {int(eta_sec % 60)} сек"
                     )
+
+            # Двойная проверка shutdown (после долгого запроса с retry)
+            if self.shutdown_requested:
+                logging.info("\n🛑 Получен сигнал завершения. Аккуратный выход.")
+                logging.info(
+                    f"   Прогресс сохранён: {self.stats['total_processed']}/{len(urls)} обработано."
+                )
+                logging.info("   Повторный запуск продолжит с этого места (resume).")
+                break
 
         total_time = datetime.now() - start_time
         success_rate = (
@@ -1504,14 +1712,21 @@ class CraftBeerGlobalParser:
             if self.stats["total_processed"] > 0
             else 0
         )
-        logging.info("\n🎉 ОБНОВЛЕНИЕ ЗАВЕРШЕНО!")
+        logging.info("\n🎉 ОБНОВЛЕНИЕ ЗАВЕРШЕНО!" + (" (прервано пользователем)" if self.shutdown_requested else ""))
         logging.info("📊 ФИНАЛЬНАЯ СТАТИСТИКА:")
         logging.info(f"   Обработано: {self.stats['total_processed']}")
         logging.info(f"   Успешно: {self.stats['successful_parses']}")
         logging.info(f"   Ошибок: {self.stats['failed_parses']}")
         logging.info(f"   Обновлений БД: {self.stats['database_updates']}")
+        logging.info(f"   Retry использовано: {self.stats['retries_used']}")
+        logging.info(f"   Пауз circuit breaker: {self.stats['circuit_pauses']}")
         logging.info(f"   Процент успеха: {success_rate:.1f}%")
         logging.info(f"   Общее время: {total_time}")
+        if self.shutdown_requested:
+            logging.info(
+                "\n💡 Прогресс сохранён в parse_progress. "
+                "Перезапустите команду — продолжит с места остановки."
+            )
 
         return self.stats
 
@@ -1551,6 +1766,26 @@ if __name__ == "__main__":
     _args = _cli.parse_args()
 
     parser = CraftBeerGlobalParser()
+
+    # --- Graceful shutdown: Ctrl+C = аккуратный выход с сохранением прогресса ---
+    # Первый Ctrl+C ставит флаг, процесс доходит до проверки и выходит чисто.
+    # Второй Ctrl+C = немедленный выход (os._exit).
+    import signal as _signal
+    import os as _os
+
+    def _handle_sigint(signum, frame):
+        if parser.shutdown_requested:
+            # Второе нажатие — жёсткий выход
+            print("\n⛔ Повторный Ctrl+C — принудительный выход.", flush=True)
+            _os._exit(1)
+        parser.shutdown_requested = True
+        print(
+            "\n🛑 Получен Ctrl+C. Завершаю текущий запрос и сохраняю прогресс...\n"
+            "   (повторный Ctrl+C = принудительный выход)",
+            flush=True,
+        )
+
+    _signal.signal(_signal.SIGINT, _handle_sigint)
 
     if _args.refresh:
         stats = parser.run_refresh_parsing(
