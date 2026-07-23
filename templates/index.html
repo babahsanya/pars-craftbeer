@@ -35,22 +35,27 @@
 
 <div id="defaultHomeContent">
   <h2 class="section-title">🏭 Топ пивоварен</h2>
-  <div class="grid-tight">
+  <div class="rank-list">
     {% for b in top_breweries %}
-      <a class="stat-card" href="{{ url_for('brewery_detail', slug=b.slug) }}">
-        <span class="label">{{ b.producer }}</span>
-        <span class="num">{{ b.count }}</span>
-        {% if b.country %}<span class="label">{{ b.country }}</span>{% endif %}
+      <a class="rank-item" href="{{ url_for('brewery_detail', slug=b.slug) }}">
+        <span class="rank-num">{{ b.rank }}</span>
+        <div class="rank-main">
+          <div class="rank-name">{{ b.producer }}</div>
+          <div class="rank-bar"><div class="rank-fill" style="width: {{ b.pct }}%"></div></div>
+        </div>
+        <span class="rank-count">{{ b.count }}</span>
       </a>
     {% endfor %}
+    <a class="rank-all" href="{{ url_for('breweries') }}">Все пивовары →</a>
   </div>
 
   <h2 class="section-title">🌍 Страны</h2>
-  <div class="grid-tight">
+  <div class="country-grid">
     {% for c in top_countries %}
-      <a class="stat-card" href="{{ url_for('country_detail', name=c.country) }}">
-        <span class="label">{{ c.country }}</span>
-        <span class="num">{{ c.count }}</span>
+      <a class="country-tile" href="{{ url_for('country_detail', name=c.country) }}">
+        <span class="ct-flag">{{ c.flag }}</span>
+        <span class="ct-name">{{ c.country }}</span>
+        <span class="ct-count">{{ c.count }}</span>
       </a>
     {% endfor %}
   </div>

@@ -676,3 +676,109 @@ a:hover { text-decoration: underline; }
   display: flex; gap: 8px; margin-top: 14px;
 }
 .filters-actions .btn { font-size: 13px; }
+
+/* ===== RANK LIST (топ пивоварен как чарт) ===== */
+.rank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.rank-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.rank-item:hover {
+  border-color: var(--accent);
+  transform: translateX(3px);
+  text-decoration: none;
+}
+.rank-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 28px;
+  text-align: center;
+}
+.rank-item:nth-child(1) .rank-num { color: #fbbf24; }  /* золото */
+.rank-item:nth-child(2) .rank-num { color: #cbd5e1; }  /* серебро */
+.rank-item:nth-child(3) .rank-num { color: #d97706; }  /* бронза */
+.rank-main { flex: 1; min-width: 0; }
+.rank-name {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rank-bar {
+  height: 5px;
+  background: var(--panel-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.rank-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #7dd3fc);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.rank-count {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent);
+  min-width: 40px;
+  text-align: right;
+}
+.rank-all {
+  display: block;
+  text-align: center;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+  border-radius: 8px;
+}
+.rank-all:hover { color: var(--accent); background: var(--panel); }
+
+/* ===== COUNTRY TILES (плитки стран с флагами) ===== */
+.country-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.country-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--text);
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.country-tile:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  text-decoration: none;
+}
+.ct-flag { font-size: 32px; line-height: 1; }
+.ct-name { font-size: 13px; font-weight: 500; text-align: center; }
+.ct-count {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+}

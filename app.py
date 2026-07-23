@@ -228,6 +228,25 @@ def index():
         family_chips.append({"id": fid, "icon": icon, "title": title, "count": row["n"]})
     family_chips.sort(key=lambda f: (f["id"] == "other", -f["count"]))
 
+    # Топ пивоварен как ранжированный чарт (с прогресс-баром)
+    max_brewery_count = top_breweries[0]["count"] if top_breweries else 1
+    for i, b in enumerate(top_breweries, 1):
+        b["rank"] = i
+        b["pct"] = int(b["count"] / max_brewery_count * 100) if max_brewery_count else 0
+
+    # Страны с эмодзи-флагами
+    country_flags = {
+        "Россия": "🇷🇺", "Бельгия": "🇧🇪", "Нидерланды": "🇳🇱",
+        "Великобритания": "🇬🇧", "Чехия": "🇨🇿", "Франция": "🇫🇷",
+        "Ирландия": "🇮🇪", "США": "🇺🇸", "Германия": "🇩🇪", "Швеция": "🇸🇪",
+        "Канада": "🇨🇦", "Финляндия": "🇫🇮", "Швейцария": "🇨🇭", "Чили": "🇨🇱",
+        "Испания": "🇪🇸", "Вьетнам": "🇻🇳", "Китай": "🇨🇳", "Таиланд": "🇹🇭",
+        "Италия": "🇮🇹", "Дания": "🇩🇰", "Норвегия": "🇳🇴", "Польша": "🇵🇱",
+        "Япония": "🇯🇵", "Австрия": "🇦🇹", "Португалия": "🇵🇹",
+    }
+    for c in top_countries:
+        c["flag"] = country_flags.get(c["country"], "🌐")
+
     return render_template(
         "index.html",
         total_beers=total_beers,
