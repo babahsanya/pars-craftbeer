@@ -43,10 +43,14 @@ class CraftBeerGlobalParser:
         )
 
         retries = Retry(
-            total=3,
-            backoff_factor=0.5,
+            total=0,  # ВАЖНО: 0 — urllib3 НЕ делает своих retry.
+            # Всю retry-логику ведёт _fetch_with_retry (3 попытки с паузами 5/15/30с).
+            # Раньше тут было total=3, что давало двойной retry (urllib3 + наш) и
+            # при первой же ошибке session «отравлялась» и кидала RetryError
+            # на каждый последующий запрос без реальной попытки.
             status_forcelist=(429, 500, 502, 503, 504),
             allowed_methods=("GET", "HEAD"),
+            raise_on_status=False,
         )
         adapter = HTTPAdapter(max_retries=retries, pool_connections=50, pool_maxsize=50)
         self.session.mount("http://", adapter)
