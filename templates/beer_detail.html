@@ -108,6 +108,7 @@
       {% if beer.original_url %}
         <a class="btn btn-primary" href="{{ beer.original_url }}" target="_blank" rel="noopener">Открыть оригинал ↗</a>
       {% endif %}
+      <button class="btn fav-btn" data-beer-id="{{ beer.id }}" title="В избранное">♡ <span class="fav-label">В избранное</span></button>
       <a class="btn" href="{{ url_for('compare', id1=beer.id) }}">⚖ Сравнить с...</a>
       <a class="btn" href="{{ url_for('random_beer') }}">🎲 Случайное</a>
     </div>
@@ -138,4 +139,8 @@
     {% endfor %}
   </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/favorites.js') }}"></script>
 {% endblock %}

@@ -439,6 +439,65 @@ def api_search():
     })
 
 
+@app.route("/api/beers")
+def api_beers():
+    """Возвращает карточки пива по списку ID (для избранного/подборок).
+
+    GET /api/beers?ids=1,2,3 — список через запятую.
+    """
+    ids_raw = (request.args.get("ids") or "").strip()
+    if not ids_raw:
+        return jsonify({"results": [], "count": 0})
+    try:
+        ids = [int(x.strip()) for x in ids_raw.split(",") if x.strip().isdigit()]
+    except ValueError:
+        ids = []
+    if not ids:
+        return jsonify({"results": [], "count": 0})
+    placeholders = ",".join(["?"] * len(ids))
+    rows = get_db().execute(
+        f"SELECT id, name, producer, style, style_family, abv, volume, price, "
+        f"local_image FROM products_full WHERE id IN ({placeholders})",
+        ids,
+    ).fetchall()
+    results = []
+    for r in rows:
+        results.append({
+            "id": r["id"],
+            "name": r["name"],
+            "producer": r["producer"],
+            "style": r["style"],
+            "style_family": r["style_family"],
+            "abv": r["abv"],
+            "volume": r["volume"],
+            "price": r["price"],
+            "image": static_url(r["local_image"]) if r["local_image"] else None,
+            "url": url_for("beer_detail", beer_id=r["id"]),
+        })
+    return jsonify({"results": results, "count": len(results)})
+
+
+@app.route("/favorites")
+def favorites():
+    """Страница избранного. Читает ?ids= из URL, отдаёт карточки.
+
+    Если ids не указан — страница с пустым состоянием, JS заполнит из localStorage.
+    """
+    ids_raw = (request.args.get("ids") or "").strip()
+    beers = []
+    if ids_raw:
+        ids = [int(x) for x in ids_raw.split(",") if x.strip().isdigit()]
+        if ids:
+            placeholders = ",".join(["?"] * len(ids))
+            db = get_db()
+            beers = db.execute(
+                f"SELECT id, name, producer, style, abv, volume, price, local_image "
+                f"FROM products_full WHERE id IN ({placeholders})",
+                ids,
+            ).fetchall()
+    return render_template("favorites.html", beers=beers, ids_raw=ids_raw)
+
+
 @app.route("/style-families")
 def style_families():
     """Сетка 16 семей стилей с иконками, названиями и кол-вом позиций."""

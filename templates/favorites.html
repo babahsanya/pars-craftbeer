@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Избранное{% endblock %}
+
+{% block content %}
+<h1 class="page-title">♥ Избранное и подборки</h1>
+<div class="page-subtitle" id="favSubtitle">Загрузка...</div>
+
+{# Табы: Избранное / Кастомные подборки #}
+<div class="fav-tabs">
+  <button class="fav-tab active" data-tab="favorites">♥ Избранное <span class="fav-count" id="favCount">0</span></button>
+  <button class="fav-tab" data-tab="lists">📋 Мои подборки <span class="fav-count" id="listsCount">0</span></button>
+</div>
+
+{# Панель: Избранное #}
+<div class="fav-panel" id="panelFavorites">
+  <div id="favGrid" class="grid">
+    {# Заполнится JS из localStorage / api/beers #}
+  </div>
+  <div class="empty-state" id="favEmpty" style="display:none;">
+    <div class="big">♥</div>
+    <p>Избранное пусто. Нажмите ♥ на карточке пива, чтобы добавить.</p>
+    <p style="margin-top:12px;"><a class="btn btn-primary" href="{{ url_for('catalog') }}">Перейти в каталог →</a></p>
+  </div>
+</div>
+
+{# Панель: Кастомные подборки #}
+<div class="fav-panel" id="panelLists" style="display:none;">
+  <div class="lists-controls">
+    <button class="btn btn-primary" id="createListBtn">➕ Создать подборку</button>
+  </div>
+  <div id="listsContainer"></div>
+  <div class="empty-state" id="listsEmpty" style="display:none;">
+    <div class="big">📋</div>
+    <p>У вас пока нет кастомных подборок.</p>
+    <p>Создайте подборку «Дегустационный сет», «Хочу попробовать» и добавляйте туда пиво с карточек.</p>
+  </div>
+</div>
+
+<div class="fav-note">
+  💾 Избранное хранится локально в вашем браузере (localStorage). Не привязано к аккаунту.
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/favorites.js') }}"></script>
+{% endblock %}
