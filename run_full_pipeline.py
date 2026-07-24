@@ -67,7 +67,22 @@ def step_parse(limit: int | None, fresh: bool, failed_only: bool) -> int:
         "Resume: повторный запуск продолжит с места остановки (если без --fresh).",
         flush=True,
     )
-    return run(cmd, "Парсинг")
+    ret = run(cmd, "Парсинг")
+
+    # АВТОПЕРЕПРОВЕРКА ОШИБОК: после основного прогона (не failed-only/fresh)
+    # автоматически перепроверяем временные ошибки (network/server/blocked).
+    # Permanent (404) исключаются — это снятые товары, перепроверять бессмысленно.
+    if not failed_only and not fresh and not limit:
+        banner("ШАГ 1б — ПЕРЕПРОВЕРКА ВРЕМЕННЫХ ОШИБОК")
+        print(
+            "После основного прогона перепроверяем ошибки network/server/blocked.\n"
+            "Permanent (404 — снятые товары) НЕ перепроверяются (бессмысленно).",
+            flush=True,
+        )
+        retry_cmd = [PY, "craftbeer_global_parser.py", "--refresh", "--failed-only"]
+        run(retry_cmd, "Перепроверка ошибок")
+
+    return ret
 
 
 def step_images(limit: int | None, max_per_beer: int) -> int:
@@ -83,8 +98,19 @@ def step_images(limit: int | None, max_per_beer: int) -> int:
     return run(cmd, "Кеш картинок")
 
 
+def step_normalize() -> int:
+    """Нормализация style_family для новых позиций (после парсинга)."""
+    banner("ШАГ 3/5 — НОРМАЛИЗАЦИЯ СЕМЕЙ СТИЛЕЙ")
+    print(
+        "Заполняет style_family для новых позиций (classify_style по keyword-правилам).\n"
+        "Idempotent: можно запускать многократно.",
+        flush=True,
+    )
+    return run([PY, "normalize_styles.py"], "Нормализация стилей")
+
+
 def step_styles() -> int:
-    banner("ШАГ 3/3 — СПРАВОЧНИК СТИЛЕЙ BJCP")
+    banner("ШАГ 4/5 — СПРАВОЧНИК СТИЛЕЙ BJCP")
     return run([PY, "style_guide.py"], "Справочник стилей")
 
 
@@ -103,7 +129,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--step",
-        choices=["parse", "images", "styles", "all"],
+        choices=["parse", "normalize", "images", "styles", "all"],
         default="all",
         help="Какой шаг запустить (по умолчанию: all).",
     )
@@ -145,6 +171,8 @@ def main() -> int:
     results = {}
     if args.step in ("all", "parse"):
         results["parse"] = step_parse(args.limit, args.fresh, args.failed_only)
+    if args.step in ("all", "normalize"):
+        results["normalize"] = step_normalize()
     if args.step in ("all", "images"):
         results["images"] = step_images(args.limit, args.max_per_beer)
     if args.step in ("all", "styles"):
