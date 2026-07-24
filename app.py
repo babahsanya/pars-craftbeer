@@ -853,16 +853,37 @@ def catalog():
     if filters["producer"]:
         where.append("producer LIKE ?")
         params.append(f"%{filters['producer']}%")
-    # Семья стилей (чипс) — приоритет, фильтрует по style_family
-    if filters["family"] and filters["family"] in all_family_ids():
-        where.append("style_family = ?")
-        params.append(filters["family"])
-    if filters["style"]:
-        where.append("style = ?")
-        params.append(filters["style"])
-    if filters["country"]:
-        where.append("brewery_country = ?")
-        params.append(filters["country"])
+
+    # Мульти-выбор семей стилей (CSV: family=ipa,sour).
+    # Валидируем каждый против белого списка all_family_ids().
+    families_selected = [
+        f for f in (x.strip() for x in filters["family"].split(","))
+        if f and f in all_family_ids()
+    ]
+    if families_selected:
+        placeholders = ",".join(["?"] * len(families_selected))
+        where.append(f"style_family IN ({placeholders})")
+        params.extend(families_selected)
+
+    # Мульти-выбор конкретных стилей (CSV)
+    styles_selected = [
+        s for s in (x.strip() for x in filters["style"].split(","))
+        if s
+    ]
+    if styles_selected:
+        placeholders = ",".join(["?"] * len(styles_selected))
+        where.append(f"style IN ({placeholders})")
+        params.extend(styles_selected)
+
+    # Мульти-выбор стран (CSV)
+    countries_selected = [
+        c for c in (x.strip() for x in filters["country"].split(","))
+        if c
+    ]
+    if countries_selected:
+        placeholders = ",".join(["?"] * len(countries_selected))
+        where.append(f"brewery_country IN ({placeholders})")
+        params.extend(countries_selected)
     if filters["abv_min"]:
         try:
             where.append("abv >= ?")
@@ -908,15 +929,16 @@ def catalog():
         f"SELECT COUNT(*) AS c FROM products_full WHERE {where_sql}", params
     ).fetchone()
 
-    # Опции для фильтров: конкретные стили фильтруем по выбранной семье
+    # Опции для фильтров: конкретные стили фильтруем по выбранным семьям (мульти)
     style_sql = (
         "SELECT DISTINCT style FROM products_full "
         "WHERE style IS NOT NULL AND style != ''"
     )
     style_params: list = []
-    if filters["family"] and filters["family"] in all_family_ids():
-        style_sql += " AND style_family = ?"
-        style_params.append(filters["family"])
+    if families_selected:
+        placeholders = ",".join(["?"] * len(families_selected))
+        style_sql += f" AND style_family IN ({placeholders})"
+        style_params.extend(families_selected)
     style_sql += " ORDER BY style"
     style_options = [
         r["style"] for r in db.execute(style_sql, style_params).fetchall()
@@ -924,6 +946,15 @@ def catalog():
     country_options = [r["brewery_country"] for r in db.execute(
         "SELECT DISTINCT brewery_country FROM products_full WHERE brewery_country IS NOT NULL AND brewery_country != '' ORDER BY brewery_country"
     ).fetchall()]
+
+    # Границы цен для слайдера (по всей базе, не зависят от фильтров)
+    price_bounds = db.execute(
+        "SELECT MIN(CAST(REPLACE(REPLACE(REPLACE(price, ' ₽', ''), ' ', ''), CHAR(160), '') AS REAL)) AS mn, "
+        "MAX(CAST(REPLACE(REPLACE(REPLACE(price, ' ₽', ''), ' ', ''), CHAR(160), '') AS REAL)) AS mx "
+        "FROM products_full WHERE price LIKE '%₽'"
+    ).fetchone()
+    price_min_bound = int(price_bounds["mn"] or 0)
+    price_max_bound = int(price_bounds["mx"] or 5000)
 
     # Чипсы семей с кол-вом для UI
     family_chips = []
@@ -945,6 +976,11 @@ def catalog():
         style_options=style_options,
         country_options=country_options,
         family_chips=family_chips,
+        families_selected=families_selected,
+        countries_selected=countries_selected,
+        styles_selected=styles_selected,
+        price_min_bound=price_min_bound,
+        price_max_bound=price_max_bound,
         sort_options={
             "name": "По названию (А-Я)",
             "abv_desc": "По крепости (мощные)",

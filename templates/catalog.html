@@ -3,189 +3,185 @@
 
 {% block content %}
 <h1 class="page-title">📚 Каталог</h1>
-<div class="page-subtitle">Найдено: <strong>{{ total }}</strong> позиций</div>
 
-<form method="get" id="catalogForm">
-  {# сохраняем скрытые поля при переключении чипсов #}
-  <input type="hidden" name="family" id="familyInput" value="{{ filters.family }}">
+<form method="get" id="catalogForm" class="catalog-layout">
+  {# ============ ЛЕВАЯ КОЛОНКА: ФАСЕТНЫЕ ФИЛЬТРЫ (всегда открыта) ============ #}
+  <aside class="filters-sidebar" id="filtersSidebar">
+    <div class="fs-header">
+      <span class="fs-title">🔧 Фильтры</span>
+      <a href="{{ url_for('catalog') }}" class="fs-reset">Сбросить</a>
+    </div>
 
-  {# Чипсы семей #}
-  <div class="family-chips family-chips-selectable">
-    <button type="button" class="fam-chip {{ 'active' if not filters.family }}" data-family="">
-      <span class="fc-emoji">🍺</span>
-      <span class="fc-name">Все</span>
-      <span class="fc-n">{{ total }}</span>
-    </button>
-    {% for f in family_chips %}
-      <button type="button" class="fam-chip {{ 'active' if filters.family == f.id }}" data-family="{{ f.id }}">
-        <span class="fc-emoji">{{ f.icon }}</span>
-        <span class="fc-name">{{ f.title }}</span>
-        <span class="fc-n">{{ f.count }}</span>
-      </button>
-    {% endfor %}
-  </div>
+    {# Поиск по названию/пивовару #}
+    <div class="fs-group">
+      <label class="fs-label">Название</label>
+      <input type="text" name="name" value="{{ filters.name }}" placeholder="часть названия..." class="fs-input">
+    </div>
+    <div class="fs-group">
+      <label class="fs-label">Пивовар</label>
+      <input type="text" name="producer" value="{{ filters.producer }}" placeholder="часть названия..." class="fs-input">
+    </div>
 
-  {# Панель управления: сортировка + вид #}
-  <div class="catalog-toolbar">
-    <div class="ct-sort">
-      <span class="ct-label">Сортировка:</span>
-      <select name="sort" class="ct-select" onchange="this.form.submit()">
+    {# Семьи стилей — мульти-чипсы #}
+    <div class="fs-group">
+      <label class="fs-label">Семья стилей <span class="fs-hint">(можно несколько)</span></label>
+      <div class="fs-chips" id="familyChips">
+        {% for f in family_chips %}
+          <button type="button" class="fs-chip {{ 'active' if f.id in families_selected }}"
+                  data-family="{{ f.id }}">
+            <span>{{ f.icon }}</span> {{ f.title }} <span class="fs-chip-n">{{ f.count }}</span>
+          </button>
+        {% endfor %}
+      </div>
+      <input type="hidden" name="family" id="familyInput" value="{{ filters.family }}">
+    </div>
+
+    {# Конкретный стиль — мульти-select #}
+    <div class="fs-group">
+      <label class="fs-label">Конкретный стиль</label>
+      <div class="fs-multiselect" id="styleMulti">
+        <div class="fs-ms-display">
+          {% if styles_selected %}Выбрано: {{ styles_selected|length }}{% else %}Все стили{% endif %}
+        </div>
+        <div class="fs-ms-options" id="styleOptions">
+          {% for s in style_options %}
+            <label class="fs-ms-option">
+              <input type="checkbox" value="{{ s }}" data-style-cb {{ 'checked' if s in styles_selected }}>
+              {{ s }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+      <input type="hidden" name="style" id="styleInput" value="{{ filters.style }}">
+    </div>
+
+    {# Страна — мульти-select #}
+    <div class="fs-group">
+      <label class="fs-label">Страна</label>
+      <div class="fs-multiselect" id="countryMulti">
+        <div class="fs-ms-display">
+          {% if countries_selected %}Выбрано: {{ countries_selected|length }}{% else %}Все страны{% endif %}
+        </div>
+        <div class="fs-ms-options" id="countryOptions">
+          {% for c in country_options %}
+            <label class="fs-ms-option">
+              <input type="checkbox" value="{{ c }}" data-country-cb {{ 'checked' if c in countries_selected }}>
+              {{ c }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+      <input type="hidden" name="country" id="countryInput" value="{{ filters.country }}">
+    </div>
+
+    {# ABV #}
+    <div class="fs-group">
+      <label class="fs-label">Крепость ABV %</label>
+      <div class="fs-range2">
+        <input type="number" name="abv_min" value="{{ filters.abv_min }}" placeholder="от" step="0.1" class="fs-input">
+        <input type="number" name="abv_max" value="{{ filters.abv_max }}" placeholder="до" step="0.1" class="fs-input">
+      </div>
+    </div>
+
+    {# Цена — двойной слайдер #}
+    <div class="fs-group">
+      <label class="fs-label">Цена ₽ <span class="fs-price-values" id="priceValues">{{ filters.price_min or price_min_bound }}–{{ filters.price_max or price_max_bound }}</span></label>
+      <div class="fs-slider-wrap">
+        <div class="fs-slider-track"></div>
+        <div class="fs-slider-range" id="priceRangeBar"></div>
+        <input type="range" id="priceMinSlider" min="{{ price_min_bound }}" max="{{ price_max_bound }}"
+               step="50" value="{{ filters.price_min or price_min_bound }}" class="fs-slider">
+        <input type="range" id="priceMaxSlider" min="{{ price_min_bound }}" max="{{ price_max_bound }}"
+               step="50" value="{{ filters.price_max or price_max_bound }}" class="fs-slider">
+      </div>
+      <input type="hidden" name="price_min" id="priceMinInput" value="{{ filters.price_min }}">
+      <input type="hidden" name="price_max" id="priceMaxInput" value="{{ filters.price_max }}">
+    </div>
+
+    {# Только с фото #}
+    <div class="fs-group">
+      <label class="fs-check">
+        <input type="checkbox" name="with_photo" value="1" {{ 'checked' if filters.with_photo }}>
+        Только с фото
+      </label>
+    </div>
+
+    {# Пресеты #}
+    <div class="fs-group">
+      <label class="fs-label">Пресеты</label>
+      <div class="fs-presets">
+        <button type="button" class="fs-preset-btn" id="savePresetBtn">💾 Сохранить</button>
+        <div class="fs-preset-list" id="presetList"></div>
+      </div>
+    </div>
+
+    {# Сортировка + вид #}
+    <div class="fs-group">
+      <label class="fs-label">Сортировка</label>
+      <select name="sort" class="fs-input" onchange="document.getElementById('catalogForm').submit()">
         {% for key, label in sort_options.items() %}
           <option value="{{ key }}" {{ 'selected' if filters.sort == key }}>{{ label }}</option>
         {% endfor %}
       </select>
     </div>
-    <div class="ct-view">
-      <button type="button" class="view-btn {{ 'active' if filters.view != 'list' }}" data-view="grid" title="Сетка">▦</button>
-      <button type="button" class="view-btn {{ 'active' if filters.view == 'list' }}" data-view="list" title="Список">☰</button>
-    </div>
-  </div>
-  <input type="hidden" name="view" id="viewInput" value="{{ filters.view }}">
 
-  {# Сворачиваемая панель фильтров #}
-  <div class="filters-toggle">
-    <button type="button" id="filtersToggleBtn" class="btn">
-      <span id="filtersToggleLabel">{{ 'Фильтры ▴' if filters.name or filters.producer or filters.style or filters.country or filters.abv_min or filters.abv_max or filters.price_min or filters.price_max or filters.with_photo else 'Фильтры ▾' }}</span>
-    </button>
-  </div>
-
-  <div class="filters-panel {{ 'collapsed' if not (filters.name or filters.producer or filters.style or filters.country or filters.abv_min or filters.abv_max or filters.price_min or filters.price_max or filters.with_photo) }}" id="filtersPanel">
-    <div class="filters-grid">
-      <div class="fg">
-        <label>Название</label>
-        <input type="text" name="name" value="{{ filters.name }}" placeholder="часть названия...">
-      </div>
-      <div class="fg">
-        <label>Пивовар</label>
-        <input type="text" name="producer" value="{{ filters.producer }}" placeholder="часть названия...">
-      </div>
-      <div class="fg">
-        <label>Конкретный стиль</label>
-        <select name="style">
-          <option value="">Все стили{% if filters.family %} семьи{% endif %}</option>
-          {% for s in style_options %}
-            <option value="{{ s }}" {{ 'selected' if filters.style == s }}>{{ s }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="fg">
-        <label>Страна</label>
-        <select name="country">
-          <option value="">Все страны</option>
-          {% for c in country_options %}
-            <option value="{{ c }}" {{ 'selected' if filters.country == c }}>{{ c }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="fg">
-        <label>Крепость ABV %</label>
-        <div class="range2">
-          <input type="number" name="abv_min" value="{{ filters.abv_min }}" placeholder="от" step="0.1">
-          <input type="number" name="abv_max" value="{{ filters.abv_max }}" placeholder="до" step="0.1">
-        </div>
-      </div>
-      <div class="fg">
-        <label>Цена ₽</label>
-        <div class="range2">
-          <input type="number" name="price_min" value="{{ filters.price_min }}" placeholder="от">
-          <input type="number" name="price_max" value="{{ filters.price_max }}" placeholder="до">
-        </div>
-      </div>
-      <div class="fg fg-check">
-        <label>
-          <input type="checkbox" name="with_photo" value="1" {{ 'checked' if filters.with_photo }}>
-          Только с фото
-        </label>
-      </div>
-    </div>
-    <div class="filters-actions">
+    <div class="fs-actions">
       <button type="submit" class="btn btn-primary">Применить</button>
-      <a class="btn" href="{{ url_for('catalog') }}">Сбросить всё</a>
+      <div class="fs-view-toggle">
+        <button type="button" class="view-btn {{ 'active' if filters.view != 'list' }}" data-view="grid" title="Сетка">▦</button>
+        <button type="button" class="view-btn {{ 'active' if filters.view == 'list' }}" data-view="list" title="Список">☰</button>
+      </div>
     </div>
-  </div>
+    <input type="hidden" name="view" id="viewInput" value="{{ filters.view }}">
+  </aside>
+
+  {# ============ ПРАВАЯ КОЛОНКА: РЕЗУЛЬТАТЫ ============ #}
+  <section class="catalog-results">
+    <div class="cr-header">
+      <span>Найдено: <strong>{{ total }}</strong> позиций</span>
+      <button type="button" class="fs-mobile-toggle" id="mobileFiltersToggle">🔧 Фильтры</button>
+    </div>
+
+    {% if beers %}
+      <div class="catalog-grid view-{{ filters.view }}">
+        {% for b in beers %}
+          <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
+            <div class="card-img">
+              {% if b.local_image %}
+                <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
+              {% else %}
+                <span class="no-img"><span class="no-img-letter">{{ (b.name or '?')[0] }}</span></span>
+              {% endif %}
+            </div>
+            <div class="card-body">
+              <div class="card-name">{{ b.name }}</div>
+              <div class="card-producer">{{ b.producer or '' }}</div>
+              {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
+              <div class="card-meta">
+                {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
+                {% if b.volume %}<span class="pill">{{ b.volume }} мл</span>{% endif %}
+                {% if b.price %}<span class="pill price">{{ b.price }}</span>{% endif %}
+              </div>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+
+      {% if has_more %}
+        <div style="text-align:center; margin-top:24px;">
+          <a class="btn btn-primary" href="{{ url_for('catalog', **next_page_params) }}">Показать ещё {{ page_size }} →</a>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="empty-state">
+        <div class="big">🍺</div>
+        <p>Ничего не найдено. Измените фильтры.</p>
+      </div>
+    {% endif %}
+  </section>
 </form>
+{% endblock %}
 
-{% if beers %}
-  <div class="catalog-grid view-{{ filters.view }}">
-    {% for b in beers %}
-      <a class="beer-card" href="{{ url_for('beer_detail', beer_id=b.id) }}">
-        <div class="card-img">
-          {% if b.local_image %}
-            <img src="{{ url_for('static', filename=b.local_image.replace('static/', '')) }}" alt="{{ b.name }}" loading="lazy">
-          {% else %}
-            <span class="no-img">
-              <span class="no-img-letter">{{ (b.name or '?')[0] }}</span>
-            </span>
-          {% endif %}
-        </div>
-        <div class="card-body">
-          <div class="card-name">{{ b.name }}</div>
-          <div class="card-producer">{{ b.producer or '' }}</div>
-          {% if b.style %}<div class="card-style">{{ b.style }}</div>{% endif %}
-          <div class="card-meta">
-            {% if b.abv %}<span class="pill abv">{{ b.abv }}%</span>{% endif %}
-            {% if b.volume %}<span class="pill">{{ b.volume }} мл</span>{% endif %}
-            {% if b.price %}<span class="pill price">{{ b.price }}</span>{% endif %}
-          </div>
-        </div>
-      </a>
-    {% endfor %}
-  </div>
-
-  {% if has_more %}
-    <div style="text-align:center; margin-top:24px;">
-      <a class="btn btn-primary" href="{{ url_for('catalog', **next_page_params) }}">Показать ещё {{ page_size }} →</a>
-    </div>
-  {% endif %}
-{% else %}
-  <div class="empty-state">
-    <div class="big">🍺</div>
-    <p>Ничего не найдено. Измените фильтры.</p>
-  </div>
-{% endif %}
-
-<script>
-// Чипсы — переключение семьи без перезагрузки видимых фильтров
-document.querySelectorAll('.fam-chip[data-family]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.getElementById('familyInput').value = btn.dataset.family;
-    // сбрасываем конкретный стиль при смене семьи (он может не входить в новую)
-    const styleSel = document.querySelector('select[name="style"]');
-    if (styleSel) styleSel.value = '';
-    document.getElementById('catalogForm').submit();
-  });
-});
-
-// Сворачивание/разворот фильтров
-const toggleBtn = document.getElementById('filtersToggleBtn');
-const panel = document.getElementById('filtersPanel');
-const label = document.getElementById('filtersToggleLabel');
-toggleBtn.addEventListener('click', () => {
-  panel.classList.toggle('collapsed');
-  label.textContent = panel.classList.contains('collapsed') ? 'Фильтры ▾' : 'Фильтры ▴';
-});
-
-// Переключатель вида (сетка/список) — обновляет hidden input и сабмитит форму
-document.querySelectorAll('.view-btn[data-view]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.getElementById('viewInput').value = btn.dataset.view;
-    // сохраняем в localStorage для других страниц
-    try { localStorage.setItem('catalog_view', btn.dataset.view); } catch(e) {}
-    document.getElementById('catalogForm').submit();
-  });
-});
-
-// Восстанавливаем вид из localStorage если в URL не указан явно
-(function() {
-  const urlView = new URLSearchParams(window.location.search).get('view');
-  if (!urlView) {
-    try {
-      const saved = localStorage.getItem('catalog_view');
-      if (saved && saved !== 'grid') {
-        document.getElementById('viewInput').value = saved;
-      }
-    } catch(e) {}
-  }
-})();
-</script>
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/catalog.js') }}"></script>
 {% endblock %}

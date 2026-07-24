@@ -1250,3 +1250,286 @@ a:hover { text-decoration: underline; }
   align-items: center;
   justify-content: center;
 }
+
+/* ===== CATALOG v2: двухколоночная раскладка + фасеты + слайдер ===== */
+.catalog-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+/* Левая колонка: фильтры */
+.filters-sidebar {
+  position: sticky;
+  top: 80px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+.fs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.fs-title { font-weight: 700; font-size: 15px; }
+.fs-reset { font-size: 12px; color: var(--muted); }
+
+.fs-group { margin-bottom: 16px; }
+.fs-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.fs-hint { font-weight: 400; text-transform: none; color: var(--muted); opacity: 0.7; }
+.fs-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.fs-input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+.fs-range2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fs-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.fs-check input { width: 16px; height: 16px; cursor: pointer; }
+
+/* Чипсы семей (мульти) */
+.fs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s ease;
+}
+.fs-chip:hover { border-color: var(--accent); }
+.fs-chip.active {
+  background: var(--accent);
+  color: #0b1220;
+  border-color: var(--accent);
+}
+.fs-chip-n {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.15);
+  font-size: 10px;
+}
+.fs-chip:not(.active) .fs-chip-n {
+  background: var(--chip);
+  color: var(--muted);
+}
+
+/* Мульти-селект */
+.fs-multiselect { position: relative; }
+.fs-ms-display {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.fs-ms-display::after { content: " ▾"; float: right; color: var(--muted); }
+.fs-ms-options {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  padding: 6px;
+}
+.fs-ms-options.open { display: block; }
+.fs-ms-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.fs-ms-option:hover { background: var(--panel-2); }
+.fs-ms-option input { width: 14px; height: 14px; }
+
+/* Двойной слайдер цены */
+.fs-price-values { font-weight: 400; color: var(--accent); text-transform: none; }
+.fs-slider-wrap {
+  position: relative;
+  height: 32px;
+  margin: 8px 0;
+}
+.fs-slider-track {
+  position: absolute;
+  top: 14px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--panel-2);
+  border-radius: 2px;
+}
+.fs-slider-range {
+  position: absolute;
+  top: 14px;
+  height: 4px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.fs-slider {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+}
+.fs-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  pointer-events: auto;
+  border: 2px solid var(--panel);
+}
+.fs-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  pointer-events: auto;
+  border: 2px solid var(--panel);
+}
+
+/* Пресеты */
+.fs-presets { display: flex; flex-direction: column; gap: 6px; }
+.fs-preset-btn {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+}
+.fs-preset-btn:hover { border-color: var(--accent); }
+.fs-preset-list { display: flex; flex-direction: column; gap: 4px; }
+.fs-preset-empty { font-size: 11px; color: var(--muted); text-align: center; padding: 4px; }
+.fs-preset-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--panel-2);
+  border-radius: 6px;
+}
+.fs-preset-link { flex: 1; font-size: 12px; }
+.fs-preset-del {
+  border: 0;
+  background: transparent;
+  color: var(--bad);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+/* Действия снизу */
+.fs-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.fs-view-toggle { display: flex; gap: 4px; }
+
+/* Правая колонка: результаты */
+.catalog-results { min-width: 0; }
+.cr-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.fs-mobile-toggle { display: none; }
+
+/* Мобильная адаптация каталога */
+@media (max-width: 768px) {
+  .catalog-layout { grid-template-columns: 1fr; }
+  .filters-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 85%;
+    max-width: 320px;
+    height: 100vh;
+    max-height: 100vh;
+    z-index: 1000;
+    border-radius: 0;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  .filters-sidebar.mobile-open { transform: translateX(0); }
+  .fs-mobile-toggle {
+    display: inline-flex;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+  }
+}

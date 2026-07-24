@@ -28,7 +28,7 @@
 <h2 class="section-title">🏷 Конкретные стили в семье ({{ styles_list|length }})</h2>
 <div class="style-tags">
   {% for s in styles_list %}
-    <a class="style-tag" href="{{ url_for('style_detail', slug=s.slug) }}">
+    <a class="style-tag" href="{{ url_for('catalog', family=family, style=s.style) }}">
       {{ s.style }}
       <span class="style-tag-count">{{ s.count }}</span>
     </a>
