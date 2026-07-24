@@ -7,7 +7,9 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
@@ -70,6 +72,10 @@ class CraftBeerGlobalParser:
         # Флаг аккуратного завершения (ставится signal handler при Ctrl+C).
         # Главный цикл проверяет его между URL — позволяет закончить текущий запрос.
         self.shutdown_requested = False
+        # Количество потоков для ThreadPoolExecutor. Меняется через --workers.
+        self.num_workers = 8
+        # Lock для защиты разделяемого состояния (consecutive_errors, stats) в потоках
+        self._lock = threading.Lock()
         # Circuit breaker: счётчик подряд идущих ошибок.
         # При достижении threshold делаем паузу и проверяем живость сайта.
         self.consecutive_errors = 0
@@ -125,7 +131,8 @@ class CraftBeerGlobalParser:
 
                 # 200 OK — успех
                 if resp.status_code == 200:
-                    self.consecutive_errors = 0
+                    with self._lock:
+                        self.consecutive_errors = 0
                     # Возвращаемся к нормальной скорости после замедления
                     self.request_delay = self.base_request_delay
                     return resp, None
@@ -178,8 +185,12 @@ class CraftBeerGlobalParser:
                     time.sleep(1)
                 self.stats["retries_used"] += 1
 
-        # Все попытки исчерпаны
-        self._register_error()
+        # Все попытки исчерпаны.
+        # Регистрируем ошибку в circuit breaker ТОЛЬКО для network/server/blocked —
+        # permanent (404) это нормальная ситуация (товар удалён), сайт жив,
+        # пауза circuit breaker здесь вредна (тормозит без причины).
+        if last_error not in ("permanent",):
+            self._register_error()
         return None, last_error or "network"
 
     def _throttle(self):
@@ -193,8 +204,10 @@ class CraftBeerGlobalParser:
 
     def _register_error(self):
         """Регистрирует ошибку в circuit breaker. При пороге — пауза."""
-        self.consecutive_errors += 1
-        if self.consecutive_errors >= self.circuit_threshold:
+        with self._lock:
+            self.consecutive_errors += 1
+            trigger = self.consecutive_errors >= self.circuit_threshold
+        if trigger:
             self._trigger_circuit_breaker()
 
     def _trigger_circuit_breaker(self):
@@ -1054,7 +1067,19 @@ class CraftBeerGlobalParser:
                         continue
 
             if description_text:
-                product_data["description"] = description_text[:5000]
+                # Чистим служебный мусор, который сайт вставляет в начало описания:
+                # «Получить уведомление о поступлении? ! Товар был в наличии более 1 года назад»
+                desc_clean = description_text
+                service_patterns = [
+                    r"Получить уведомление о поступлении\??\s*!?\s*",
+                    r"!?\s*Товар был в наличии более \d+ (?:года|лет|месяцев) назад\s*",
+                    r"Уведомить о наличии\s*",
+                ]
+                for pat in service_patterns:
+                    desc_clean = re.sub(pat, "", desc_clean, flags=re.IGNORECASE)
+                desc_clean = desc_clean.lstrip("!").strip()
+                if len(desc_clean) >= 20:
+                    product_data["description"] = desc_clean[:5000]
 
             # 7. IBU (горечь) — расширяем под форматы «IBU: 50», «IBU 50», «50 IBU», «горечь: 50»
             ibu_patterns = [
@@ -1156,26 +1181,31 @@ class CraftBeerGlobalParser:
             # вида «...сварено в стиле Молочный стаут...». Таблица свойств
             # (блок 9.1 ниже) даёт чистый стиль как fallback.
 
-            # 9.1 Читаем свойства из таблицы/списка характеристик
-            properties = []
-            properties_rows = soup.select(
-                'div[class*="product_page_properties_table_row"], '
-                'li[class*="product_page_properties_table_row"], '
-                'tr[class*="product_page_properties_table_row"]'
-            )
-            for row in properties_rows:
-                text = _clean_text(row.get_text(" ", strip=True))
-                if ":" in text:
-                    label, value = text.split(":", 1)
-                    properties.append((label.strip(), value.strip()))
+            # 9.1 Читаем свойства из таблицы характеристик.
+            # craftbeer78.ru использует парные div'ы: _30 = label, _70 = value.
+            # Старый код резал по ':' внутри одного get_text — это работало
+            # неточно. Теперь читаем парами (label_row, value_row) напрямую.
+            properties: list[tuple[str, str]] = []
+            label_rows = soup.select('.product_page_properties_table_row_30')
+            value_rows = soup.select('.product_page_properties_table_row_70')
+            for label_el, value_el in zip(label_rows, value_rows):
+                l = _clean_text(label_el.get_text(" ", strip=True))
+                v = _clean_text(value_el.get_text(" ", strip=True))
+                if l and v:
+                    properties.append((l, v))
 
-            for li in soup.select(
-                ".product_page_properties_table li, .product_properties li, .product_params li"
-            ):
-                text = _clean_text(li.get_text(" ", strip=True))
-                if ":" in text:
-                    label, value = text.split(":", 1)
-                    properties.append((label.strip(), value.strip()))
+            # Fallback: общий селектор для строк с ':' внутри (другие вёрстки)
+            if not properties:
+                properties_rows = soup.select(
+                    'div[class*="product_page_properties_table_row"], '
+                    'li[class*="product_page_properties_table_row"], '
+                    'tr[class*="product_page_properties_table_row"]'
+                )
+                for row in properties_rows:
+                    text = _clean_text(row.get_text(" ", strip=True))
+                    if ":" in text:
+                        label, value = text.split(":", 1)
+                        properties.append((label.strip(), value.strip()))
 
             for label, value in properties:
                 label_lower = label.lower()
@@ -1190,6 +1220,9 @@ class CraftBeerGlobalParser:
                     product_data.setdefault("brewery_city", value)
                 elif "подст" in label_lower or "substyle" in label_lower:
                     product_data.setdefault("substyle", value)
+                elif "категор" in label_lower or "category" in label_lower:
+                    # Категория из DOM: «Стаут (Stout)» — точнее чем «пиво»
+                    product_data.setdefault("category_detailed", value)
                 elif "стиль" in label_lower or "style" in label_lower:
                     product_data.setdefault("style", value)
                 elif "креп" in label_lower or "abv" in label_lower:
@@ -1204,8 +1237,13 @@ class CraftBeerGlobalParser:
                     ibu_value = _parse_ibu(value)
                     if ibu_value is not None:
                         product_data.setdefault("ibu", ibu_value)
+                elif "цвет" in label_lower and "ebc" in label_lower:
+                    # «Цвет (EBC)»: ~72 — числовой показатель цвета
+                    product_data.setdefault("color_ebc", value)
                 elif "цвет" in label_lower or "color" in label_lower:
                     product_data.setdefault("color", value)
+                elif "тара" in label_lower or "container" in label_lower:
+                    product_data.setdefault("container", value)
                 elif "ингредиент" in label_lower or "состав" in label_lower:
                     product_data.setdefault("ingredients", value)
                 elif "хмель" in label_lower or "hops" in label_lower:
@@ -1228,6 +1266,12 @@ class CraftBeerGlobalParser:
                     or "ean" in label_lower
                 ):
                     product_data.setdefault("barcode", value)
+                elif "untappd" in label_lower:
+                    # Untappd: «untappd.com/b/-/2939153» — нормализуем
+                    if value.startswith("http"):
+                        product_data.setdefault("untappd_url", value)
+                    else:
+                        product_data.setdefault("untappd_url", "https://" + value)
                 elif "рейтинг" in label_lower or "rating" in label_lower:
                     rating_value = _parse_number(value)
                     if rating_value is not None:
@@ -1584,7 +1628,48 @@ class CraftBeerGlobalParser:
         finally:
             conn.close()
 
-    def run_refresh_parsing(self, max_products=None, resume=True, failed_only=False):
+    def _handle_parse_result(self, url: str, product_data: dict) -> None:
+        """Обработка результата парсинга в главном потоке (БД-запись сериализована).
+
+        Вызывается из главного цикла после получения результата от рабочего потока.
+        Здесь: сохранение в products_full, пометка parse_progress, обновление stats.
+        """
+        ok = bool(product_data.get("parse_success"))
+        error_class = product_data.get("_error_class")
+
+        if ok:
+            if self.save_to_database(product_data):
+                self.stats["successful_parses"] += 1
+                self._mark_progress(url, "ok")
+                self.processed_urls.add(url)
+                with self._lock:
+                    self.stats["total_processed"] += 1
+                    self.stats["database_updates"] += 1
+                key_data = []
+                for field in ["name", "producer", "abv", "volume", "category", "price"]:
+                    if product_data.get(field):
+                        key_data.append(f"{field}={product_data[field]}")
+                logging.info(f"   ✅ ОБНОВЛЕНО: {', '.join(key_data)}")
+            else:
+                self.stats["failed_parses"] += 1
+                self._mark_progress(url, "save_error")
+                with self._lock:
+                    self.stats["total_processed"] += 1
+                logging.error(f"   ❌ Ошибка сохранения в БД: {url}")
+        else:
+            # shutdown — не помечаем как ошибку
+            if error_class == "shutdown":
+                return
+            self.stats["failed_parses"] += 1
+            status = f"error_{error_class}" if error_class else "parse_error"
+            self._mark_progress(url, status)
+            self.failed_urls.add(url)
+            self.processed_urls.add(url)
+            with self._lock:
+                self.stats["total_processed"] += 1
+            logging.error(f"   ❌ Парсинг неудачен (статус: {status}): {url}")
+
+    def run_refresh_parsing(self, max_products=None, resume=True, failed_only=False, workers=None):
         """Перевычитывание всех существующих позиций из базы.
 
         Берёт original_url из products_full, перевычитывает каждую страницу,
@@ -1599,6 +1684,11 @@ class CraftBeerGlobalParser:
         logging.info("🔄 ЗАПУСК ОБНОВЛЕНИЯ (REFRESH) CRAFTBEER78.RU")
         logging.info("=" * 60)
         start_time = datetime.now()
+
+        # Применяем кол-во потоков (если передано)
+        if workers:
+            self.num_workers = max(1, int(workers))
+        logging.info(f"🧵 Потоков: {self.num_workers}")
 
         # Убеждаемся, что таблица существует
         self.create_enhanced_database()
@@ -1652,96 +1742,107 @@ class CraftBeerGlobalParser:
             logging.warning("⚠️ Нечего обновлять (всё уже обработано или пусто)")
             return self.stats
 
-        for i, url in enumerate(urls, 1):
-            # Проверяем запрос на завершение между URL
-            if self.shutdown_requested:
-                logging.info("\n🛑 Получен сигнал завершения. Аккуратный выход.")
-                logging.info(
-                    f"   Прогресс сохранён: {self.stats['total_processed']}/{len(urls)} обработано."
-                )
-                logging.info("   Повторный запуск продолжит с этого места (resume).")
-                break
+        # ===================================================================
+        # МНОГОПОТОЧНЫЙ ПАРСИНГ (ThreadPoolExecutor)
+        # Рабочие потоки парсят (HTTP + BeautifulSoup), главный поток пишет
+        # в SQLite (SQLite не любит concurrent writes — сериализуем).
+        # requests.Session потокобезопасен на чтение.
+        # ===================================================================
+        num_workers = min(self.num_workers, max(len(urls), 1))
 
-            logging.info(f"\n📦 {i}/{len(urls)}: {url}")
+        def _worker(url: str):
+            """Рабочая функция потока: парсит один URL. Возвращает (url, data)."""
+            try:
+                data = self.parse_product_comprehensive(url)
+                return url, data
+            except Exception as e:
+                logging.error(f"   ❌ Исключение в потоке для {url}: {e}")
+                return url, {
+                    "original_url": url,
+                    "url_hash": hashlib.md5(url.encode()).hexdigest(),
+                    "parse_success": 0,
+                    "_error_class": "exception",
+                }
 
-            product_data = self.parse_product_comprehensive(url)
-            ok = bool(product_data.get("parse_success"))
-            # Класс ошибки из _fetch_with_retry (network/blocked/server/permanent/shutdown)
-            error_class = product_data.get("_error_class")
-
-            if ok:
-                if self.save_to_database(product_data):
-                    self.stats["successful_parses"] += 1
-                    self._mark_progress(url, "ok")
-                    key_data = []
-                    for field in [
-                        "name",
-                        "producer",
-                        "abv",
-                        "volume",
-                        "category",
-                        "price",
-                    ]:
-                        if field in product_data and product_data[field]:
-                            key_data.append(f"{field}={product_data[field]}")
-                    logging.info(f"   ✅ ОБНОВЛЕНО: {', '.join(key_data)}")
-                else:
-                    self.stats["failed_parses"] += 1
-                    self._mark_progress(url, "save_error")
-                    logging.error("   ❌ Ошибка сохранения в БД")
-            else:
-                # Выход по Ctrl+C — не помечаем как ошибку, просто выходим
-                if error_class == "shutdown":
+        processed_count = 0
+        with ThreadPoolExecutor(max_workers=num_workers) as pool:
+            # Подаем URL батчами, чтобы видеть прогресс и реагировать на shutdown
+            futures = {}
+            url_iter = iter(urls)
+            # Первоначальная загрузка num_workers URL
+            for _ in range(num_workers):
+                try:
+                    u = next(url_iter)
+                except StopIteration:
                     break
-                self.stats["failed_parses"] += 1
-                # Классифицированный статус для parse_progress
-                status = f"error_{error_class}" if error_class else "parse_error"
-                self._mark_progress(url, status)
-                self.failed_urls.add(url)
-                logging.error(
-                    f"   ❌ Парсинг неудачен (статус: {status})"
-                )
+                futures[pool.submit(_worker, u)] = u
 
-            self.processed_urls.add(url)
-            self.stats["total_processed"] += 1
-            time.sleep(self.request_delay)
+            while futures:
+                # shutdown — не подаем новые URL, ждём завершения текущих
+                if self.shutdown_requested:
+                    # отменяем все невыполненные
+                    for fut in list(futures):
+                        fut.cancel()
+                    # ждём только текущие
+                    for fut in as_completed(list(futures)):
+                        try:
+                            fut.result(timeout=5)
+                        except Exception:
+                            pass
+                    break
 
-            if i % 10 == 0:
-                elapsed = datetime.now() - start_time
-                success_rate = (
-                    (self.stats["successful_parses"] / self.stats["total_processed"] * 100)
-                    if self.stats["total_processed"] > 0
-                    else 0
-                )
-                # ETA
-                speed = self.stats["total_processed"] / elapsed.total_seconds() if elapsed.total_seconds() > 0 else 0
-                remaining = len(urls) - i
-                eta_sec = remaining / speed if speed > 0 else 0
-                logging.info(
-                    f"   Обработано: {self.stats['total_processed']}/{len(urls)}"
-                )
-                logging.info(
-                    f"   Успешно: {self.stats['successful_parses']} ({success_rate:.1f}%)"
-                )
-                logging.info(f"   Ошибок: {self.stats['failed_parses']}")
-                logging.info(
-                    f"   Retry использовано: {self.stats['retries_used']}, "
-                    f"пауз circuit breaker: {self.stats['circuit_pauses']}"
-                )
-                logging.info(f"   Время: {elapsed}")
-                if eta_sec > 0:
-                    logging.info(
-                        f"   ETA: ~{int(eta_sec // 60)} мин {int(eta_sec % 60)} сек"
-                    )
+                # Ждём первый завершившийся
+                done_set = set()
+                for fut in as_completed(futures, timeout=None):
+                    done_set.add(fut)
+                    break
 
-            # Двойная проверка shutdown (после долгого запроса с retry)
-            if self.shutdown_requested:
-                logging.info("\n🛑 Получен сигнал завершения. Аккуратный выход.")
-                logging.info(
-                    f"   Прогресс сохранён: {self.stats['total_processed']}/{len(urls)} обработано."
-                )
-                logging.info("   Повторный запуск продолжит с этого места (resume).")
-                break
+                for fut in done_set:
+                    url = futures.pop(fut)
+                    try:
+                        result_url, product_data = fut.result()
+                    except Exception as e:
+                        logging.error(f"   ❌ Ошибка получения результата {url}: {e}")
+                        product_data = {"parse_success": 0, "_error_class": "exception"}
+                    # Обрабатываем результат в главном потоке (БД writes)
+                    self._handle_parse_result(url, product_data)
+                    processed_count += 1
+
+                    # Подаем следующий URL (если не shutdown и ещё есть)
+                    if not self.shutdown_requested:
+                        try:
+                            next_url = next(url_iter)
+                            futures[pool.submit(_worker, next_url)] = next_url
+                        except StopIteration:
+                            pass
+
+                    # Периодическая статистика (каждые 25)
+                    if processed_count % 25 == 0:
+                        elapsed = datetime.now() - start_time
+                        success_rate = (
+                            (self.stats["successful_parses"] / max(self.stats["total_processed"], 1) * 100)
+                        )
+                        speed = self.stats["total_processed"] / max(elapsed.total_seconds(), 1)
+                        remaining = len(urls) - processed_count
+                        eta_sec = remaining / speed if speed > 0 else 0
+                        logging.info(
+                            f"   Обработано: {self.stats['total_processed']}/{len(urls)} "
+                            f"({speed:.1f} поз/сек, потоки={num_workers})"
+                        )
+                        logging.info(
+                            f"   Успешно: {self.stats['successful_parses']} ({success_rate:.1f}%), "
+                            f"ошибок: {self.stats['failed_parses']}, "
+                            f"retry: {self.stats['retries_used']}, "
+                            f"CB-пауз: {self.stats['circuit_pauses']}"
+                        )
+                        if eta_sec > 0:
+                            if eta_sec >= 3600:
+                                eta_str = f"{int(eta_sec // 3600)} ч {int((eta_sec % 3600) // 60)} мин"
+                            elif eta_sec >= 60:
+                                eta_str = f"{int(eta_sec // 60)} мин"
+                            else:
+                                eta_str = f"{int(eta_sec)} сек"
+                            logging.info(f"   ETA: ~{eta_str}")
 
         total_time = datetime.now() - start_time
         success_rate = (
@@ -1758,6 +1859,7 @@ class CraftBeerGlobalParser:
         logging.info(f"   Retry использовано: {self.stats['retries_used']}")
         logging.info(f"   Пауз circuit breaker: {self.stats['circuit_pauses']}")
         logging.info(f"   Процент успеха: {success_rate:.1f}%")
+        logging.info(f"   Потоков: {num_workers}")
         logging.info(f"   Общее время: {total_time}")
         if self.shutdown_requested:
             logging.info(
@@ -1800,6 +1902,12 @@ if __name__ == "__main__":
         default=None,
         help="Ограничить количество товаров (для теста).",
     )
+    _cli.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        help="Количество параллельных потоков (по умолчанию: 8).",
+    )
     _args = _cli.parse_args()
 
     parser = CraftBeerGlobalParser()
@@ -1829,6 +1937,7 @@ if __name__ == "__main__":
             max_products=_args.limit,
             resume=not _args.fresh,
             failed_only=_args.failed_only,
+            workers=_args.workers,
         )
     elif _args.full:
         stats = parser.run_global_parsing()
