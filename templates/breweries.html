@@ -1,29 +1,73 @@
 {% extends "base.html" %}
-{% block title %}Пивовары — Пивная энциклопедия{% endblock %}
+{% block title %}Пивоварни — Пивная энциклопедия{% endblock %}
 
 {% block content %}
-<h1 class="page-title">🏭 Пивовары</h1>
-<div class="page-subtitle">{{ breweries|length }} пивоварен в базе</div>
+<h1 class="page-title">🏭 Пивоварни</h1>
+<div class="page-subtitle">{{ total_breweries }} пивоварен · {{ grouped|length }} стран</div>
 
-<div class="filters-bar">
-  <input id="breweryFilter" type="text" placeholder="Фильтр по названию..." class="grow">
+{# Панель управления: сортировка + поиск #}
+<div class="catalog-toolbar">
+  <div class="ct-sort">
+    <span class="ct-label">Сортировка:</span>
+    <select class="ct-select" onchange="window.location.href='?sort=' + this.value">
+      <option value="popular" {{ 'selected' if sort == 'popular' }}>По популярности</option>
+      <option value="alpha" {{ 'selected' if sort == 'alpha' }}>По алфавиту</option>
+      <option value="country" {{ 'selected' if sort == 'country' }}>По стране</option>
+      <option value="abv" {{ 'selected' if sort == 'abv' }}>По средней крепости</option>
+    </select>
+  </div>
+  <div class="ct-sort">
+    <input id="breweryFilter" type="text" placeholder="🔍 Поиск пивоварни..." class="ct-select" style="width:240px">
+  </div>
 </div>
 
-<div class="grid-tight" id="breweryList">
-  {% for b in breweries %}
-    <a class="stat-card brewery-item" data-name="{{ (b.producer or '')|lower }}" href="{{ url_for('brewery_detail', slug=b.slug) }}">
-      <span class="label">{{ b.producer or 'Без названия' }}</span>
-      <span class="num">{{ b.count }}</span>
-      {% if b.country %}<span class="label">{{ b.country }}</span>{% endif %}
-    </a>
+{# Группировка по странам (аккордеон) #}
+<div class="brewery-groups">
+  {% for country, items in grouped %}
+  <div class="brewery-group">
+    <div class="bg-header" onclick="this.parentElement.classList.toggle('collapsed')">
+      <span class="bg-flag">{{ country_flag(country) }}</span>
+      <span class="bg-name">{{ country }}</span>
+      <span class="bg-count">{{ items|length }} пивоварен · {{ items|sum(attribute='count') }} позиций</span>
+      <span class="bg-toggle">▾</span>
+    </div>
+    <div class="bg-body">
+      <div class="grid brewery-cards">
+        {% for b in items %}
+        <a class="brewery-card brewery-item" href="{{ url_for('brewery_detail', slug=b.slug) }}"
+           data-name="{{ b.producer|lower }}">
+          <div class="bc-avatar">{{ b.producer[0] }}</div>
+          <div class="bc-info">
+            <div class="bc-name">{{ b.producer }}</div>
+            <div class="bc-geo">{{ b.city }}</div>
+            <div class="bc-stats">
+              <span class="bc-stat">{{ b.count }} поз.</span>
+              {% if b.avg_abv %}<span class="bc-stat">ABV {{ '%.1f'|format(b.avg_abv) }}</span>{% endif %}
+              <span class="bc-stat">{{ b.styles_n }} стилей</span>
+            </div>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
   {% endfor %}
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-document.getElementById('breweryFilter').addEventListener('input', (e) => {
-  const v = e.target.value.toLowerCase();
-  document.querySelectorAll('.brewery-item').forEach(el => {
-    el.style.display = el.dataset.name.includes(v) ? '' : 'none';
+// Поиск пивоварен (фильтр карточек)
+document.getElementById('breweryFilter').addEventListener('input', function(e) {
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('.brewery-item').forEach(function(el) {
+    const name = el.dataset.name || '';
+    el.style.display = name.includes(q) ? '' : 'none';
+  });
+  // показать пустые группы или скрыть
+  document.querySelectorAll('.brewery-group').forEach(function(g) {
+    const visible = g.querySelectorAll('.brewery-item:not([style*="display: none"])').length;
+    g.style.display = visible > 0 ? '' : 'none';
   });
 });
 </script>

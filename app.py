@@ -142,7 +142,24 @@ def inject_helpers():
     return {
         "abv_per_rub": lambda b: _fmt_abv_per_rub(b),
         "price_per_100ml": lambda b: _fmt_price_per_100ml(b),
+        "country_flag": _country_flag,
     }
+
+
+_COUNTRY_FLAGS = {
+    "Россия": "🇷🇺", "Бельгия": "🇧🇪", "Нидерланды": "🇳🇱",
+    "Великобритания": "🇬🇧", "Чехия": "🇨🇿", "Франция": "🇫🇷",
+    "Ирландия": "🇮🇪", "США": "🇺🇸", "Германия": "🇩🇪", "Швеция": "🇸🇪",
+    "Канада": "🇨🇦", "Финляндия": "🇫🇮", "Швейцария": "🇨🇭", "Чили": "🇨🇱",
+    "Испания": "🇪🇸", "Вьетнам": "🇻🇳", "Китай": "🇨🇳", "Таиланд": "🇹🇭",
+    "Италия": "🇮🇹", "Дания": "🇩🇰", "Норвегия": "🇳🇴", "Польша": "🇵🇱",
+    "Япония": "🇯🇵", "Австрия": "🇦🇹", "Португалия": "🇵🇹",
+    "Не указана": "🌐",
+}
+
+
+def _country_flag(country: str | None) -> str:
+    return _COUNTRY_FLAGS.get(country or "", "🌐")
 
 
 def _fmt_abv_per_rub(b) -> str:
@@ -644,22 +661,70 @@ def style_detail(slug: str):
 
 @app.route("/breweries")
 def breweries():
+    """Редизайн: карточки пивоварен со статистикой + группировка + сортировка."""
     db = get_db()
+    sort = (request.args.get("sort") or "popular").strip()
+    group = (request.args.get("group") or "country").strip()
+
+    # Агрегатная статистика по каждой пивоварне
     rows = db.execute(
-        "SELECT producer, brewery_country, COUNT(*) AS c FROM products_full "
+        "SELECT producer, brewery_country, brewery_city, "
+        "COUNT(*) AS cnt, AVG(abv) AS avg_abv, "
+        "COUNT(DISTINCT style) AS styles_n, "
+        "COUNT(local_image) AS photos_n, "
+        "AVG(CAST(REPLACE(REPLACE(price, ' ₽', ''), ' ', '') AS REAL)) AS avg_price "
+        "FROM products_full "
         "WHERE producer IS NOT NULL AND producer != '' "
-        "GROUP BY producer ORDER BY c DESC"
+        "GROUP BY producer"
     ).fetchall()
-    breweries_list = [
-        {
+
+    breweries_list = []
+    for r in rows:
+        breweries_list.append({
             "producer": r["producer"],
-            "country": r["brewery_country"],
-            "count": r["c"],
+            "country": r["brewery_country"] or "Не указана",
+            "city": r["brewery_city"] or "",
+            "count": r["cnt"],
+            "avg_abv": r["avg_abv"],
+            "styles_n": r["styles_n"],
+            "photos_n": r["photos_n"],
+            "avg_price": r["avg_price"],
             "slug": slugify(r["producer"]),
-        }
-        for r in rows
-    ]
-    return render_template("breweries.html", breweries=breweries_list)
+        })
+
+    # Сортировка
+    sort_map = {
+        "popular": lambda b: -b["count"],
+        "alpha": lambda b: b["producer"].lower(),
+        "country": lambda b: (b["country"], -b["count"]),
+        "abv": lambda b: -(b["avg_abv"] or 0),
+    }
+    breweries_list.sort(key=sort_map.get(sort, sort_map["popular"]))
+
+    # Группировка по странам (для РФ — отдельная группа, внутри можно по городам)
+    by_country: dict[str, list] = {}
+    for b in breweries_list:
+        country = b["country"]
+        by_country.setdefault(country, []).append(b)
+    # Сортируем страны по кол-ву пивоварен (убывание)
+    grouped = sorted(by_country.items(), key=lambda kv: -sum(b["count"] for b in kv[1]))
+
+    # Топ городов России (для доп. фасета)
+    ru_cities = db.execute(
+        "SELECT brewery_city, COUNT(DISTINCT producer) AS breweries, COUNT(*) AS beers "
+        "FROM products_full WHERE brewery_country = 'Россия' AND brewery_city IS NOT NULL AND brewery_city != '' "
+        "GROUP BY brewery_city ORDER BY beers DESC LIMIT 12"
+    ).fetchall()
+
+    return render_template(
+        "breweries.html",
+        breweries=breweries_list,
+        grouped=grouped,
+        ru_cities=ru_cities,
+        sort=sort,
+        group=group,
+        total_breweries=len(breweries_list),
+    )
 
 
 @app.route("/brewery/<slug>")
